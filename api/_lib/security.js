@@ -20,6 +20,26 @@ function getClientIp(req) {
 export function originCheck(req, res) {
   const origin = req.headers.origin;
   const referer = req.headers.referer || "";
+
+  // Always set CORS headers if the origin is allowed
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  } else if (!origin && referer) {
+    // Fallback for tools or direct links if needed, but usually origin is present for CORS
+    const matched = ALLOWED_ORIGINS.find((o) => referer.startsWith(o));
+    if (matched) {
+      res.setHeader("Access-Control-Allow-Origin", matched);
+    }
+  }
+
+  // Handle preflight
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return false;
+  }
+
   if (origin && !ALLOWED_ORIGINS.includes(origin)) {
     res.status(403).json({ success: false, message: "Invalid origin" });
     return false;
