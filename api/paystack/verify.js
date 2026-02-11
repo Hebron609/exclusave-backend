@@ -57,12 +57,32 @@ export default async function handler(req, res) {
     const metadata = data.metadata || {};
     const { network, phone_number, data_amount } = metadata;
 
-    // Trigger Data API if metadata is present
+    // Trigger Data API if metadata is present (MTN, AirtelTigo, Telecel only)
     let dataApiResponse = null;
-    if (network && phone_number && data_amount) {
+    let dataApiError = null;
+
+    const isDataProduct = ["MTN", "AirtelTigo", "Telecel"].includes(network);
+
+    if (isDataProduct && network && phone_number && data_amount) {
       try {
+        const INSTANTDATA_API_KEY = process.env.INSTANTDATA_API_KEY;
+        const INSTANTDATA_API_URL =
+          process.env.INSTANTDATA_API_URL ||
+          "https://instantdatagh.com/api.php/orders";
+
+        if (!INSTANTDATA_API_KEY) {
+          throw new Error("InstantData API key not configured");
+        }
+
+        console.log("[Verify] 🚀 Calling InstantData API:", {
+          url: INSTANTDATA_API_URL,
+          network,
+          phone_number,
+          data_amount,
+        });
+
         dataApiResponse = await axios.post(
-          "https://instantdatagh.com/api.php/orders",
+          INSTANTDATA_API_URL,
           {
             network,
             phone_number,
@@ -70,37 +90,53 @@ export default async function handler(req, res) {
           },
           {
             headers: {
+              "x-api-key": INSTANTDATA_API_KEY,
               "Content-Type": "application/json",
             },
+            timeout: 10000,
           },
         );
-      } catch (dataErr) {
-        console.error(
-          "Data API error:",
-          dataErr?.response?.data || dataErr?.message || dataErr,
+
+        console.log(
+          "[Verify] ✅ InstantData API Success:",
+          dataApiResponse.data,
         );
-        // Don't fail the transaction if Data API fails, but include the error
-        return res.status(500).json({
-          success: false,
-          message: "Transaction successful but Data API call failed",
+      } catch (dataErr) {
+        dataApiError =
+          dataErr?.response?.data || dataErr?.message || String(dataErr);
+        console.error("[Verify] ❌ Data API error:", dataApiError);
+
+        // For data products, mark as pending manual processing
+        return res.status(200).json({
+          success: true,
           paystack: data,
-          dataApiError:
-            dataErr?.response?.data || String(dataErr?.message || dataErr),
+          dataApiError: dataApiError,
+          message:
+            "Payment verified but data delivery pending. Please contact support.",
+          order: {
+            order_id: data.reference,
+            status: "pending_manual_processing",
+          },
         });
       }
     }
 
-    // Extract order_id and status from Data API response
-    const orderInfo = dataApiResponse?.data || {};
-    const { order_id, status: dataStatus } = orderInfo;
+    // Extract order_id and status from Data API response (or use Paystack reference)
+    const instantDataResponse = dataApiResponse?.data || {};
+    const orderInfo = instantDataResponse.data || {};
+    const orderId = orderInfo.order_id || data.reference;
+    const orderStatus = isDataProduct
+      ? orderInfo.status || "processing"
+      : "completed";
 
     return res.json({
       success: true,
       paystack: data,
       order: {
-        order_id,
-        status: dataStatus,
+        order_id: orderId,
+        status: orderStatus,
       },
+      dataApi: dataApiResponse?.data || null,
     });
   } catch (err) {
     return res.status(500).json({

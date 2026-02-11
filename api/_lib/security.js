@@ -21,16 +21,50 @@ export function originCheck(req, res) {
   const origin = req.headers.origin;
   const referer = req.headers.referer || "";
 
-  // Always set CORS headers if the origin is allowed
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  } else if (!origin && referer) {
-    // Fallback for tools or direct links if needed, but usually origin is present for CORS
-    const matched = ALLOWED_ORIGINS.find((o) => referer.startsWith(o));
-    if (matched) {
-      res.setHeader("Access-Control-Allow-Origin", matched);
+  // Development mode: allow localhost
+  const isDevelopment =
+    origin?.includes("localhost") || referer?.includes("localhost");
+
+  if (isDevelopment) {
+    // For development, be permissive
+    res.setHeader("Access-Control-Allow-Origin", origin || "*");
+    res.setHeader(
+      "Access-Control-Allow-Methods",
+      "GET,POST,PUT,DELETE,OPTIONS",
+    );
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization",
+    );
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  } else {
+    // Production: whitelist check
+    const ALLOWED = [
+      "https://exclusave-backend.vercel.app",
+      "https://exclusave-shop.vercel.app",
+      process.env.CORS_ORIGIN || "",
+    ].filter(Boolean);
+
+    if (origin && ALLOWED.includes(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader(
+        "Access-Control-Allow-Methods",
+        "GET,POST,PUT,DELETE,OPTIONS",
+      );
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization",
+      );
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+    } else if (!origin) {
+      // No origin (possibly backend-to-backend)
+      res.setHeader("Access-Control-Allow-Origin", "*");
+    } else {
+      // Origin not allowed
+      res
+        .status(403)
+        .json({ success: false, message: "Origin not allowed: " + origin });
+      return false;
     }
   }
 
@@ -40,14 +74,6 @@ export function originCheck(req, res) {
     return false;
   }
 
-  if (origin && !ALLOWED_ORIGINS.includes(origin)) {
-    res.status(403).json({ success: false, message: "Invalid origin" });
-    return false;
-  }
-  if (referer && !ALLOWED_ORIGINS.some((o) => referer.startsWith(o))) {
-    res.status(403).json({ success: false, message: "Invalid referer" });
-    return false;
-  }
   return true;
 }
 
@@ -60,7 +86,10 @@ export function rateLimit(req, res) {
   };
   const elapsed = now - entry.last;
   const refill = (elapsed / RATE_LIMIT_WINDOW_MS) * RATE_LIMIT_MAX;
-  entry.tokens = Math.min(entry.tokens + refill, RATE_LIMIT_MAX + RATE_LIMIT_BURST);
+  entry.tokens = Math.min(
+    entry.tokens + refill,
+    RATE_LIMIT_MAX + RATE_LIMIT_BURST,
+  );
   entry.last = now;
   if (entry.tokens < 1) {
     buckets.set(ip, entry);

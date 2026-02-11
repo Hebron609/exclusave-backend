@@ -1,9 +1,17 @@
 import axios from "axios";
-import { originCheck, rateLimit, bad, serverError, ok } from "../_lib/security.js";
+import {
+  originCheck,
+  rateLimit,
+  bad,
+  serverError,
+  ok,
+} from "../_lib/security.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ success: false, message: "Method not allowed" });
+    return res
+      .status(405)
+      .json({ success: false, message: "Method not allowed" });
   }
   if (!rateLimit(req, res)) return;
   if (!originCheck(req, res)) return;
@@ -33,23 +41,36 @@ export default async function handler(req, res) {
 
     const body = {
       email: safeEmail,
-      amount: Math.round(amt * 100),
+      amount: Math.round(amt), // Frontend already sends in pesewas
       currency: "GHS",
       ...(callback_url ? { callback_url: String(callback_url) } : {}),
       ...(metadata ? { metadata } : {}),
       channels:
-        Array.isArray(channels) && channels.length > 0 ? channels : ["mobile_money"],
+        Array.isArray(channels) && channels.length > 0
+          ? channels
+          : ["mobile_money", "ussd"],
     };
 
-    const r = await axios.post("https://api.paystack.co/transaction/initialize", body, {
-      headers: {
-        Authorization: `Bearer ${PAYSTACK_SECRET}`,
-        "Content-Type": "application/json",
+    const r = await axios.post(
+      "https://api.paystack.co/transaction/initialize",
+      body,
+      {
+        headers: {
+          Authorization: `Bearer ${PAYSTACK_SECRET}`,
+          "Content-Type": "application/json",
+        },
       },
-    });
+    );
     if (!r.data || !r.data.status) {
       return serverError(res, "Paystack init failed", r.data);
     }
+
+    console.log("[Initialize] ✅ Paystack response:", {
+      reference: r.data.data.reference,
+      authorization_url: r.data.data.authorization_url,
+      has_url: !!r.data.data.authorization_url,
+    });
+
     return ok(res, {
       success: true,
       reference: r.data.data.reference,
