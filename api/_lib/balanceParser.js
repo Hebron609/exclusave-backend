@@ -40,7 +40,10 @@ export function extractBalanceFromResponse(responseData) {
     responseData.accountBalance;
 
   if (!balanceString) {
-    console.error("[Balance Parser] No balance field found in response:", responseData);
+    console.error(
+      "[Balance Parser] No balance field found in response:",
+      responseData,
+    );
     return null;
   }
 

@@ -1,10 +1,14 @@
 import axios from "axios";
 import { originCheck, rateLimit } from "../_lib/security.js";
 import {
+  storeCompleteTransaction,
   extractBalanceFromResponse,
   updateSystemBalance,
-  updateTransactionBalance,
 } from "../_lib/firebaseBalance.js";
+import {
+  sendTransactionEmail,
+  sendAdminNotification,
+} from "../_lib/emailService.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -107,30 +111,50 @@ export default async function handler(req, res) {
           dataApiResponse.data,
         );
 
+        // ✅ Store COMPLETE transaction with ALL API data
+        const paystackForStorage = {
+          reference: reference,
+          amount: data.amount / 100, // Paystack returns in cents
+          currency: data.currency || "GHS",
+          status: data.status,
+          paid_at: data.paid_at,
+          metadata: metadata,
+        };
+
+        await storeCompleteTransaction(
+          paystackForStorage,
+          dataApiResponse.data, // Full InstantData response
+          null,
+        );
+
+        // Send email confirmations
+        const customerEmail = metadata?.customer_email || metadata?.email;
+        if (customerEmail) {
+          await sendTransactionEmail(
+            customerEmail,
+            { ...paystackForStorage, order: metadata },
+            dataApiResponse.data,
+            null,
+          );
+        }
+        await sendAdminNotification(
+          { ...paystackForStorage, order: metadata },
+          dataApiResponse.data,
+          null,
+        );
+
         // Track balance if successful
         if (
           dataApiResponse.data?.status === "success" &&
           dataApiResponse.data?.data
         ) {
           const newBalance = extractBalanceFromResponse(
-            dataApiResponse.data.data
+            dataApiResponse.data.data,
           );
           if (newBalance !== null) {
             await updateSystemBalance(newBalance);
-            const cost = dataApiResponse.data.data.amount
-              ? parseFloat(
-                  String(dataApiResponse.data.data.amount).replace(/GH₵/g, "")
-                )
-              : 0;
-            await updateTransactionBalance(
-              reference,
-              null,
-              newBalance,
-              dataApiResponse.data.data.order_id,
-              cost
-            );
             console.log(
-              `[Verify] ✅ Balance updated: GH₵${newBalance.toFixed(2)}`
+              `[Verify] ✅ Balance updated: GH₵${newBalance.toFixed(2)} | Order: ${dataApiResponse.data.order_id}`,
             );
           }
         }
@@ -138,6 +162,44 @@ export default async function handler(req, res) {
         dataApiError =
           dataErr?.response?.data || dataErr?.message || String(dataErr);
         console.error("[Verify] ❌ Data API error:", dataApiError);
+
+        // Store transaction with error info
+        const paystackForStorage = {
+          reference: reference,
+          amount: data.amount / 100,
+          currency: data.currency || "GHS",
+          status: data.status,
+          paid_at: data.paid_at,
+          metadata: metadata,
+        };
+
+        await storeCompleteTransaction(
+          paystackForStorage,
+          null,
+          typeof dataApiError === "string"
+            ? dataApiError
+            : JSON.stringify(dataApiError),
+        );
+
+        // Send error emails
+        const customerEmail = metadata?.customer_email || metadata?.email;
+        if (customerEmail) {
+          await sendTransactionEmail(
+            customerEmail,
+            { ...paystackForStorage, order: metadata },
+            null,
+            typeof dataApiError === "string"
+              ? dataApiError
+              : JSON.stringify(dataApiError),
+          );
+        }
+        await sendAdminNotification(
+          { ...paystackForStorage, order: metadata },
+          null,
+          typeof dataApiError === "string"
+            ? dataApiError
+            : JSON.stringify(dataApiError),
+        );
 
         // For data products, mark as pending manual processing
         return res.status(200).json({

@@ -2,12 +2,16 @@ import crypto from "crypto";
 import axios from "axios";
 import { serverError, ok } from "../_lib/security.js";
 import {
+  storeCompleteTransaction,
   extractBalanceFromResponse,
   updateSystemBalance,
-  updateTransactionBalance,
   markTransactionFailed,
   isServiceActive,
 } from "../_lib/firebaseBalance.js";
+import {
+  sendTransactionEmail,
+  sendAdminNotification,
+} from "../_lib/emailService.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -72,7 +76,7 @@ export default async function handler(req, res) {
             const active = await isServiceActive();
             if (!active) {
               console.warn(
-                "[Webhook] ⚠️  Service is inactive, marking order as failed"
+                "[Webhook] ⚠️  Service is inactive, marking order as failed",
               );
               status = "service_inactive";
               await markTransactionFailed(ref, "Service temporarily inactive");
@@ -85,7 +89,10 @@ export default async function handler(req, res) {
           }
         } catch (verifyErr) {
           status = "verify_failed";
-          console.error("[Webhook] ❌ Payment verification failed:", verifyErr.message);
+          console.error(
+            "[Webhook] ❌ Payment verification failed:",
+            verifyErr.message,
+          );
         }
       }
     }
@@ -114,6 +121,8 @@ export default async function handler(req, res) {
  * Process data provisioning with InstantData API
  */
 async function processDataProvisioning(transactionId, metadata) {
+  let dataApiResponse = null;
+
   try {
     const INSTANTDATA_API_KEY = process.env.INSTANTDATA_API_KEY;
     const INSTANTDATA_API_URL = process.env.INSTANTDATA_API_URL;
@@ -145,11 +154,44 @@ async function processDataProvisioning(transactionId, metadata) {
       },
     );
 
-    console.log("[Webhook] 📊 InstantData response:", {
+    dataApiResponse = response.data;
+
+    console.log("[Webhook] 📊 InstantData response received:", {
       status: response.data.status,
-      order_id: response.data.data?.order_id,
+      order_id: response.data.order_id, // ✅ Correct order_id at top level
       has_balance: !!response.data.data?.remaining_balance,
     });
+
+    // ✅ Store COMPLETE transaction with ALL API data
+    const paystackForStorage = {
+      reference: transactionId,
+      amount: metadata.amount || 0,
+      currency: "GHS",
+      status: "success",
+      metadata: metadata,
+    };
+
+    await storeCompleteTransaction(
+      paystackForStorage,
+      response.data, // Send entire InstantData response
+      null,
+    );
+
+    // Send email confirmations
+    const customerEmail = metadata?.customer_email || metadata?.email;
+    if (customerEmail) {
+      await sendTransactionEmail(
+        customerEmail,
+        { ...paystackForStorage, order: metadata },
+        response.data,
+        null,
+      );
+    }
+    await sendAdminNotification(
+      { ...paystackForStorage, order: metadata },
+      response.data,
+      null,
+    );
 
     // Check if order was successful
     if (response.data.status === "success" && response.data.data) {
@@ -160,21 +202,8 @@ async function processDataProvisioning(transactionId, metadata) {
         // Update system balance
         await updateSystemBalance(newBalance);
 
-        // Update transaction with balance info
-        const cost = response.data.data.amount
-          ? parseFloat(String(response.data.data.amount).replace(/GH₵/g, ""))
-          : 0;
-
-        await updateTransactionBalance(
-          transactionId,
-          null, // Will be handled separately
-          newBalance,
-          response.data.data.order_id,
-          cost,
-        );
-
         console.log(
-          `[Webhook] ✅ Data provisioned successfully. New balance: GH₵${newBalance.toFixed(2)}`
+          `[Webhook] ✅ Data provisioned successfully. New balance: GH₵${newBalance.toFixed(2)} | Order: ${response.data.order_id}`,
         );
         return "data_provisioned";
       } else {
@@ -185,7 +214,25 @@ async function processDataProvisioning(transactionId, metadata) {
       // Order failed
       const errorMsg = response.data.message || "Unknown error";
       console.error("[Webhook] ❌ InstantData order failed:", errorMsg);
-      await markTransactionFailed(transactionId, errorMsg);
+
+      // Store failed transaction
+      await storeCompleteTransaction(paystackForStorage, dataApiResponse, errorMsg);
+
+      // Send error emails
+      if (customerEmail) {
+        await sendTransactionEmail(
+          customerEmail,
+          { ...paystackForStorage, order: metadata },
+          dataApiResponse,
+          errorMsg,
+        );
+      }
+      await sendAdminNotification(
+        { ...paystackForStorage, order: metadata },
+        dataApiResponse,
+        errorMsg,
+      );
+
       return "instantdata_failed";
     }
   } catch (error) {
@@ -195,13 +242,20 @@ async function processDataProvisioning(transactionId, metadata) {
       data: error?.response?.data,
     });
 
-    // Mark transaction as failed
-    await markTransactionFailed(
-      transactionId,
+    // Store transaction with error info
+    await storeCompleteTransaction(
+      {
+        reference: transactionId,
+        amount: metadata.amount || 0,
+        currency: "GHS",
+        metadata: metadata,
+      },
+      dataApiResponse,
       error?.response?.data?.message || error.message,
     );
 
     return "provisioning_error";
   }
 }
+
 
