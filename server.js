@@ -3,6 +3,7 @@ import express from "express";
 import initializeHandler from "./api/paystack/initialize.js";
 import verifyHandler from "./api/paystack/verify.js";
 import webhookHandler from "./api/paystack/webhook.js";
+import checkBalanceHandler from "./api/paystack/check-balance.js";
 
 const app = express();
 app.use(express.json());
@@ -53,6 +54,7 @@ app.use((req, res, next) => {
 app.all("/api/paystack/initialize", initializeHandler);
 app.all("/api/paystack/verify", verifyHandler);
 app.all("/api/paystack/webhook", webhookHandler);
+app.all("/api/paystack/check-balance", checkBalanceHandler);
 
 // Ping endpoint
 app.all("/api/ping", (req, res) => {
