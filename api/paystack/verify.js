@@ -1,5 +1,10 @@
 import axios from "axios";
 import { originCheck, rateLimit } from "../_lib/security.js";
+import {
+  extractBalanceFromResponse,
+  updateSystemBalance,
+  updateTransactionBalance,
+} from "../_lib/firebaseBalance.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -93,7 +98,7 @@ export default async function handler(req, res) {
               "x-api-key": INSTANTDATA_API_KEY,
               "Content-Type": "application/json",
             },
-            timeout: 10000,
+            timeout: 15000,
           },
         );
 
@@ -101,6 +106,34 @@ export default async function handler(req, res) {
           "[Verify] ✅ InstantData API Success:",
           dataApiResponse.data,
         );
+
+        // Track balance if successful
+        if (
+          dataApiResponse.data?.status === "success" &&
+          dataApiResponse.data?.data
+        ) {
+          const newBalance = extractBalanceFromResponse(
+            dataApiResponse.data.data
+          );
+          if (newBalance !== null) {
+            await updateSystemBalance(newBalance);
+            const cost = dataApiResponse.data.data.amount
+              ? parseFloat(
+                  String(dataApiResponse.data.data.amount).replace(/GH₵/g, "")
+                )
+              : 0;
+            await updateTransactionBalance(
+              reference,
+              null,
+              newBalance,
+              dataApiResponse.data.data.order_id,
+              cost
+            );
+            console.log(
+              `[Verify] ✅ Balance updated: GH₵${newBalance.toFixed(2)}`
+            );
+          }
+        }
       } catch (dataErr) {
         dataApiError =
           dataErr?.response?.data || dataErr?.message || String(dataErr);
