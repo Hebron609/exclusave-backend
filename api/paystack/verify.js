@@ -2,9 +2,9 @@ import axios from "axios";
 import { originCheck, rateLimit } from "../_lib/security.js";
 import {
   storeCompleteTransaction,
-  extractBalanceFromResponse,
   updateSystemBalance,
 } from "../_lib/firebaseBalance.js";
+import { extractBalanceFromResponse } from "../_lib/balanceParser.js";
 import {
   sendTransactionEmail,
   sendAdminNotification,

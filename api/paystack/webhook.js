@@ -3,11 +3,11 @@ import axios from "axios";
 import { serverError, ok } from "../_lib/security.js";
 import {
   storeCompleteTransaction,
-  extractBalanceFromResponse,
   updateSystemBalance,
   markTransactionFailed,
   isServiceActive,
 } from "../_lib/firebaseBalance.js";
+import { extractBalanceFromResponse } from "../_lib/balanceParser.js";
 import {
   sendTransactionEmail,
   sendAdminNotification,
