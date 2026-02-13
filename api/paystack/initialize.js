@@ -8,6 +8,12 @@ import {
 } from "../_lib/security.js";
 
 export default async function handler(req, res) {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    originCheck(req, res);
+    return res.status(200).end();
+  }
+
   if (req.method !== "POST") {
     return res
       .status(405)
@@ -24,6 +30,65 @@ export default async function handler(req, res) {
     const amt = Number(amount);
     if (!safeEmail.includes("@") || !isFinite(amt) || amt <= 0) {
       return bad(res, "Invalid email or amount");
+    }
+
+    // Check InstantData balance BEFORE calling Paystack
+    const INSTANTDATA_API_KEY = process.env.INSTANTDATA_API_KEY;
+    const INSTANTDATA_API_URL = process.env.INSTANTDATA_API_URL;
+
+    if (metadata && metadata.network && metadata.data_amount) {
+      if (!INSTANTDATA_API_KEY || !INSTANTDATA_API_URL) {
+        return serverError(res, "InstantData API not configured");
+      }
+
+      try {
+        console.log("[Initialize] 🔍 Checking InstantData balance for:", {
+          network: metadata.network,
+          data_amount: metadata.data_amount,
+        });
+
+        const balanceCheckBody = {
+          network: metadata.network,
+          data_amount: metadata.data_amount,
+          check_only: true, // Just check, don't deduct
+        };
+
+        const balanceResponse = await axios.post(
+          INSTANTDATA_API_URL,
+          balanceCheckBody,
+          {
+            headers: {
+              "api-key": INSTANTDATA_API_KEY,
+              "Content-Type": "application/json",
+            },
+            timeout: 10000,
+          },
+        );
+
+        console.log("[Initialize] InstantData response:", balanceResponse.data);
+
+        // Check if balance is available
+        if (
+          !balanceResponse.data ||
+          balanceResponse.data.status === "error" ||
+          !balanceResponse.data.success
+        ) {
+          return bad(
+            res,
+            `Insufficient balance for ${metadata.network}: ${balanceResponse.data?.message || "Unknown error"}`,
+          );
+        }
+      } catch (balanceErr) {
+        console.error("[Initialize] ❌ InstantData balance check failed:", {
+          message: balanceErr?.message,
+          status: balanceErr?.response?.status,
+          data: balanceErr?.response?.data,
+        });
+        return bad(
+          res,
+          `Cannot verify balance: ${balanceErr?.response?.data?.message || balanceErr?.message || "Service unavailable"}`,
+        );
+      }
     }
 
     const PAYSTACK_SECRET =
