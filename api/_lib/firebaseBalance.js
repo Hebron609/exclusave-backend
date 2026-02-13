@@ -39,6 +39,7 @@ function getDb() {
 
 /**
  * Update system balance after successful transaction
+ * Uses .set() with merge to create document if it doesn't exist
  */
 export async function updateSystemBalance(newBalance) {
   const database = getDb();
@@ -48,10 +49,14 @@ export async function updateSystemBalance(newBalance) {
     await database
       .collection("systemSettings")
       .doc("instantDataConfig")
-      .update({
-        currentBalance: newBalance,
-        lastUpdated: new Date(),
-      });
+      .set(
+        {
+          currentBalance: newBalance,
+          lastUpdated: new Date().toISOString(),
+          lastUpdateTimestamp: new Date(),
+        },
+        { merge: true }, // Creates document if doesn't exist
+      );
 
     console.log(
       `[Firestore] ✅ Balance updated to GH₵${newBalance.toFixed(2)}`,
@@ -106,9 +111,25 @@ export async function storeCompleteTransaction(
     // Extract correct order_id from InstantData (top-level, not from processing_info)
     const dataOrderId = instantDataResponse?.data?.order_id || null;
     const dataStatus = instantDataResponse?.status || "pending";
+    
+    // Extract customer email from metadata
+    const customerEmail = paystackData.metadata?.customer_email || 
+                         paystackData.metadata?.email || 
+                         paystackData.customer?.email || "Guest";
 
     // Get all relevant data from both APIs
     const transactionData = {
+      // --- TOP-LEVEL FIELDS FOR DASHBOARD COMPATIBILITY ---
+      // Simple fields for easy querying and display
+      reference: paystackData.reference,
+      amount: paystackData.amount,
+      user: customerEmail,
+      network: paystackData.metadata?.network || null,
+      productName: paystackData.metadata?.productName || null,
+      productId: paystackData.metadata?.productId || null,
+      size: paystackData.metadata?.size || null,
+      phone: paystackData.metadata?.phone_number || null,
+      
       // Paystack transaction info
       paystack: {
         reference: paystackData.reference,
@@ -124,6 +145,15 @@ export async function storeCompleteTransaction(
         network: paystackData.metadata?.network || null,
         phone_number: paystackData.metadata?.phone_number || null,
         data_amount: paystackData.metadata?.data_amount || null,
+        productName: paystackData.metadata?.productName || null,
+        productId: paystackData.metadata?.productId || null,
+        size: paystackData.metadata?.size || null,
+      },
+      
+      // Customer info
+      customer: {
+        email: customerEmail,
+        phone: paystackData.metadata?.phone_number || paystackData.customer?.phone || null,
       },
 
       // InstantData API response - COMPLETE
@@ -178,8 +208,16 @@ export async function storeCompleteTransaction(
 
       // Processing status
       status: dataStatus === "success" ? "completed" : "failed",
-      timestamp: new Date(),
-      createdAt: new Date(),
+      timestamp: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      formattedDate: new Date().toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      }),
     };
 
     // Create or update document

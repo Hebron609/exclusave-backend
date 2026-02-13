@@ -16,21 +16,31 @@ import {
 export default async function handler(req, res) {
   // Set CORS headers for all requests
   const origin = req.headers.origin || "*";
-  const allowedOrigins = ["https://exclusave-shop.vercel.app", "http://localhost:5173", "http://localhost:5174"];
+  const allowedOrigins = [
+    "https://exclusave-shop.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:5174",
+  ];
   if (allowedOrigins.includes(origin) || origin === "*") {
     res.setHeader("Access-Control-Allow-Origin", origin);
   } else {
-    res.setHeader("Access-Control-Allow-Origin", "https://exclusave-shop.vercel.app");
+    res.setHeader(
+      "Access-Control-Allow-Origin",
+      "https://exclusave-shop.vercel.app",
+    );
   }
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-paystack-signature");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, x-paystack-signature",
+  );
   res.setHeader("Access-Control-Allow-Credentials", "true");
-  
+
   // Handle OPTIONS preflight
   if (req.method === "OPTIONS") {
     return res.status(204).end();
   }
-  
+
   if (req.method !== "POST") {
     return res
       .status(405)
@@ -147,6 +157,10 @@ async function processDataProvisioning(transactionId, metadata) {
     if (!INSTANTDATA_API_KEY || !INSTANTDATA_API_URL) {
       throw new Error("InstantData API not configured");
     }
+    
+    // Ensure customer_email is in metadata for transaction storage
+    const customerEmail = metadata?.customer_email || metadata?.email || "Guest";
+    metadata.customer_email = customerEmail;
 
     console.log("[Webhook] 🚀 Calling InstantData API for:", {
       network: metadata.network,

@@ -13,21 +13,31 @@ import {
 export default async function handler(req, res) {
   // Set CORS headers for all requests
   const origin = req.headers.origin || "*";
-  const allowedOrigins = ["https://exclusave-shop.vercel.app", "http://localhost:5173", "http://localhost:5174"];
+  const allowedOrigins = [
+    "https://exclusave-shop.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:5174",
+  ];
   if (allowedOrigins.includes(origin) || origin === "*") {
     res.setHeader("Access-Control-Allow-Origin", origin);
   } else {
-    res.setHeader("Access-Control-Allow-Origin", "https://exclusave-shop.vercel.app");
+    res.setHeader(
+      "Access-Control-Allow-Origin",
+      "https://exclusave-shop.vercel.app",
+    );
   }
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-paystack-signature");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, x-paystack-signature",
+  );
   res.setHeader("Access-Control-Allow-Credentials", "true");
-  
+
   // Handle OPTIONS preflight
   if (req.method === "OPTIONS") {
     return res.status(204).end();
   }
-  
+
   if (req.method !== "POST") {
     return res
       .status(405)
@@ -81,6 +91,10 @@ export default async function handler(req, res) {
     // Extract metadata from Paystack response
     const metadata = data.metadata || {};
     const { network, phone_number, data_amount } = metadata;
+    
+    // Ensure customer_email is in metadata for transaction storage
+    const customerEmail = metadata?.customer_email || metadata?.email || data?.customer?.email || "Guest";
+    metadata.customer_email = customerEmail;
 
     // Trigger Data API if metadata is present (MTN, AirtelTigo, Telecel only)
     let dataApiResponse = null;
