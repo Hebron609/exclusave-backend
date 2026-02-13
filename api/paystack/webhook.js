@@ -157,9 +157,10 @@ async function processDataProvisioning(transactionId, metadata) {
     if (!INSTANTDATA_API_KEY || !INSTANTDATA_API_URL) {
       throw new Error("InstantData API not configured");
     }
-    
+
     // Ensure customer_email is in metadata for transaction storage
-    const customerEmail = metadata?.customer_email || metadata?.email || "Guest";
+    const customerEmail =
+      metadata?.customer_email || metadata?.email || "Guest";
     metadata.customer_email = customerEmail;
 
     console.log("[Webhook] 🚀 Calling InstantData API for:", {
@@ -209,8 +210,9 @@ async function processDataProvisioning(transactionId, metadata) {
     );
 
     // Send email confirmations
-    const customerEmail = metadata?.customer_email || metadata?.email;
-    if (customerEmail) {
+    const customerEmail =
+      metadata?.customer_email || metadata?.email || "Guest";
+    if (customerEmail && customerEmail !== "Guest") {
       await sendTransactionEmail(
         customerEmail,
         { ...paystackForStorage, order: metadata },

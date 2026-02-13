@@ -91,9 +91,13 @@ export default async function handler(req, res) {
     // Extract metadata from Paystack response
     const metadata = data.metadata || {};
     const { network, phone_number, data_amount } = metadata;
-    
+
     // Ensure customer_email is in metadata for transaction storage
-    const customerEmail = metadata?.customer_email || metadata?.email || data?.customer?.email || "Guest";
+    const customerEmail =
+      metadata?.customer_email ||
+      metadata?.email ||
+      data?.customer?.email ||
+      "Guest";
     metadata.customer_email = customerEmail;
 
     // Trigger Data API if metadata is present (MTN, AirtelTigo, Telecel only)
@@ -158,7 +162,6 @@ export default async function handler(req, res) {
         );
 
         // Send email confirmations
-        const customerEmail = metadata?.customer_email || metadata?.email;
         if (customerEmail) {
           await sendTransactionEmail(
             customerEmail,
@@ -212,7 +215,6 @@ export default async function handler(req, res) {
         );
 
         // Send error emails
-        const customerEmail = metadata?.customer_email || metadata?.email;
         if (customerEmail) {
           await sendTransactionEmail(
             customerEmail,

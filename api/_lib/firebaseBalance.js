@@ -46,17 +46,14 @@ export async function updateSystemBalance(newBalance) {
   if (!database) return false;
 
   try {
-    await database
-      .collection("systemSettings")
-      .doc("instantDataConfig")
-      .set(
-        {
-          currentBalance: newBalance,
-          lastUpdated: new Date().toISOString(),
-          lastUpdateTimestamp: new Date(),
-        },
-        { merge: true }, // Creates document if doesn't exist
-      );
+    await database.collection("systemSettings").doc("instantDataConfig").set(
+      {
+        currentBalance: newBalance,
+        lastUpdated: new Date().toISOString(),
+        lastUpdateTimestamp: new Date(),
+      },
+      { merge: true }, // Creates document if doesn't exist
+    );
 
     console.log(
       `[Firestore] ✅ Balance updated to GH₵${newBalance.toFixed(2)}`,
@@ -111,11 +108,16 @@ export async function storeCompleteTransaction(
     // Extract correct order_id from InstantData (top-level, not from processing_info)
     const dataOrderId = instantDataResponse?.data?.order_id || null;
     const dataStatus = instantDataResponse?.status || "pending";
-    
+
     // Extract customer email from metadata
-    const customerEmail = paystackData.metadata?.customer_email || 
-                         paystackData.metadata?.email || 
-                         paystackData.customer?.email || "Guest";
+    const customerEmail =
+      paystackData.metadata?.customer_email ||
+      paystackData.metadata?.email ||
+      paystackData.customer?.email ||
+      "Guest";
+
+    // Extract customer name from metadata
+    const customerName = paystackData.metadata?.customer_name || "Guest";
 
     // Get all relevant data from both APIs
     const transactionData = {
@@ -125,12 +127,13 @@ export async function storeCompleteTransaction(
       orderId: dataOrderId || paystackData.reference, // Order ID for display
       amount: paystackData.amount,
       user: customerEmail,
+      userName: customerName,
       network: paystackData.metadata?.network || null,
       productName: paystackData.metadata?.productName || null,
       productId: paystackData.metadata?.productId || null,
       size: paystackData.metadata?.size || null,
       phone: paystackData.metadata?.phone_number || null,
-      
+
       // Paystack transaction info
       paystack: {
         reference: paystackData.reference,
@@ -150,11 +153,15 @@ export async function storeCompleteTransaction(
         productId: paystackData.metadata?.productId || null,
         size: paystackData.metadata?.size || null,
       },
-      
+
       // Customer info
       customer: {
         email: customerEmail,
-        phone: paystackData.metadata?.phone_number || paystackData.customer?.phone || null,
+        name: customerName,
+        phone:
+          paystackData.metadata?.phone_number ||
+          paystackData.customer?.phone ||
+          null,
       },
 
       // InstantData API response - COMPLETE
@@ -189,21 +196,26 @@ export async function storeCompleteTransaction(
         : null,
 
       // ✅ Dashboard alias: same as instantData for backwards compatibility
-      dataApi: instantDataResponse ? {
-        status: instantDataResponse.status,
-        message: instantDataResponse.message || null,
-        order_id: dataOrderId,
-        data: instantDataResponse.data ? {
-          order_id: instantDataResponse.data.order_id,
-          network: instantDataResponse.data.network || null,
-          phone_number: instantDataResponse.data.phone_number || null,
-          data_amount: instantDataResponse.data.data_amount || null,
-          amount: instantDataResponse.data.amount || null,
-          remaining_balance: instantDataResponse.data.remaining_balance || null,
-          status: instantDataResponse.data.status || null,
-          note: instantDataResponse.data.note || null,
-        } : null,
-      } : null,
+      dataApi: instantDataResponse
+        ? {
+            status: instantDataResponse.status,
+            message: instantDataResponse.message || null,
+            order_id: dataOrderId,
+            data: instantDataResponse.data
+              ? {
+                  order_id: instantDataResponse.data.order_id,
+                  network: instantDataResponse.data.network || null,
+                  phone_number: instantDataResponse.data.phone_number || null,
+                  data_amount: instantDataResponse.data.data_amount || null,
+                  amount: instantDataResponse.data.amount || null,
+                  remaining_balance:
+                    instantDataResponse.data.remaining_balance || null,
+                  status: instantDataResponse.data.status || null,
+                  note: instantDataResponse.data.note || null,
+                }
+              : null,
+          }
+        : null,
 
       // Error info (if API call failed)
       error: error ? { message: error, timestamp: new Date() } : null,
