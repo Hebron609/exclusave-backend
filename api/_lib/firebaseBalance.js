@@ -122,6 +122,7 @@ export async function storeCompleteTransaction(
       // --- TOP-LEVEL FIELDS FOR DASHBOARD COMPATIBILITY ---
       // Simple fields for easy querying and display
       reference: paystackData.reference,
+      orderId: dataOrderId || paystackData.reference, // Order ID for display
       amount: paystackData.amount,
       user: customerEmail,
       network: paystackData.metadata?.network || null,
@@ -186,6 +187,23 @@ export async function storeCompleteTransaction(
               : null,
           }
         : null,
+
+      // ✅ Dashboard alias: same as instantData for backwards compatibility
+      dataApi: instantDataResponse ? {
+        status: instantDataResponse.status,
+        message: instantDataResponse.message || null,
+        order_id: dataOrderId,
+        data: instantDataResponse.data ? {
+          order_id: instantDataResponse.data.order_id,
+          network: instantDataResponse.data.network || null,
+          phone_number: instantDataResponse.data.phone_number || null,
+          data_amount: instantDataResponse.data.data_amount || null,
+          amount: instantDataResponse.data.amount || null,
+          remaining_balance: instantDataResponse.data.remaining_balance || null,
+          status: instantDataResponse.data.status || null,
+          note: instantDataResponse.data.note || null,
+        } : null,
+      } : null,
 
       // Error info (if API call failed)
       error: error ? { message: error, timestamp: new Date() } : null,
