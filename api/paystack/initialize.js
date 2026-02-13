@@ -58,7 +58,7 @@ export default async function handler(req, res) {
           balanceCheckBody,
           {
             headers: {
-              "api-key": INSTANTDATA_API_KEY,
+              "x-api-key": INSTANTDATA_API_KEY,
               "Content-Type": "application/json",
             },
             timeout: 10000,
