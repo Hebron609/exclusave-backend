@@ -19,9 +19,7 @@ export async function sendTransactionEmail(
   error = null,
 ) {
   if (!SENDGRID_API_KEY || !SENDGRID_FROM_EMAIL) {
-    console.warn(
-      "[EmailService] ⚠️  SendGrid not configured, skipping email",
-    );
+    console.warn("[EmailService] ⚠️  SendGrid not configured, skipping email");
     return false;
   }
 
@@ -31,9 +29,7 @@ export async function sendTransactionEmail(
   }
 
   try {
-    const subject = error
-      ? "❌ Data Order Failed"
-      : "✅ Data Order Successful";
+    const subject = error ? "❌ Data Order Failed" : "✅ Data Order Successful";
 
     const statusColor = error ? "#dc2626" : "#059669";
     const statusText = error ? "FAILED" : "PROCESSING";

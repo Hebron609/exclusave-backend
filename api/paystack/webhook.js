@@ -14,6 +14,15 @@ import {
 } from "../_lib/emailService.js";
 
 export default async function handler(req, res) {
+  // Handle OPTIONS preflight FIRST
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Origin", "https://exclusave-shop.vercel.app");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-paystack-signature");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    return res.status(204).end();
+  }
+  
   if (req.method !== "POST") {
     return res
       .status(405)
@@ -216,7 +225,11 @@ async function processDataProvisioning(transactionId, metadata) {
       console.error("[Webhook] ❌ InstantData order failed:", errorMsg);
 
       // Store failed transaction
-      await storeCompleteTransaction(paystackForStorage, dataApiResponse, errorMsg);
+      await storeCompleteTransaction(
+        paystackForStorage,
+        dataApiResponse,
+        errorMsg,
+      );
 
       // Send error emails
       if (customerEmail) {
@@ -257,5 +270,3 @@ async function processDataProvisioning(transactionId, metadata) {
     return "provisioning_error";
   }
 }
-
-

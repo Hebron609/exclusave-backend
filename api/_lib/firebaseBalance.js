@@ -139,16 +139,19 @@ export async function storeCompleteTransaction(
                   phone_number: instantDataResponse.data.phone_number || null,
                   data_amount: instantDataResponse.data.data_amount || null,
                   amount: instantDataResponse.data.amount || null,
-                  remaining_balance: instantDataResponse.data
-                    .remaining_balance || null,
+                  remaining_balance:
+                    instantDataResponse.data.remaining_balance || null,
                   status: instantDataResponse.data.status || null,
                   note: instantDataResponse.data.note || null,
                   expected_delivery:
                     instantDataResponse.data.expected_delivery || null,
-                  queue_position: instantDataResponse.data.queue_position || null,
-                  status_updates: instantDataResponse.data.status_updates || null,
+                  queue_position:
+                    instantDataResponse.data.queue_position || null,
+                  status_updates:
+                    instantDataResponse.data.status_updates || null,
                   timestamp: instantDataResponse.data.timestamp || null,
-                  processing_info: instantDataResponse.data.processing_info || {},
+                  processing_info:
+                    instantDataResponse.data.processing_info || {},
                 }
               : null,
           }

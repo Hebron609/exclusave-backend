@@ -11,13 +11,20 @@ import {
 } from "../_lib/emailService.js";
 
 export default async function handler(req, res) {
+  // Handle OPTIONS preflight FIRST
+  if (req.method === "OPTIONS") {
+    return originCheck(req, res);
+  }
+  
+  // Set CORS headers and check origin
+  if (!originCheck(req, res)) return;
+  
   if (req.method !== "POST") {
     return res
       .status(405)
       .json({ success: false, message: "Method not allowed" });
   }
   if (!rateLimit(req, res)) return;
-  if (!originCheck(req, res)) return;
   try {
     const { reference } = req.body || {};
     if (!reference) {
