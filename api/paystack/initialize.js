@@ -8,10 +8,21 @@ import {
 } from "../_lib/security.js";
 
 export default async function handler(req, res) {
-  // Handle CORS preflight
+  // Set CORS headers for all requests
+  const origin = req.headers.origin || "*";
+  const allowedOrigins = ["https://exclusave-shop.vercel.app", "http://localhost:5173", "http://localhost:5174"];
+  if (allowedOrigins.includes(origin) || origin === "*") {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "https://exclusave-shop.vercel.app");
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+
+  // Handle OPTIONS preflight
   if (req.method === "OPTIONS") {
-    originCheck(req, res);
-    return res.status(200).end();
+    return res.status(204).end();
   }
 
   if (req.method !== "POST") {
@@ -20,7 +31,6 @@ export default async function handler(req, res) {
       .json({ success: false, message: "Method not allowed" });
   }
   if (!rateLimit(req, res)) return;
-  if (!originCheck(req, res)) return;
   try {
     const { email, amount, callback_url, metadata, channels } = req.body || {};
     if (!email || !amount) {
