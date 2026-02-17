@@ -102,10 +102,11 @@ export default async function handler(req, res) {
       publicKey: PAYSTACK_PUBLIC,
     });
   } catch (err) {
-    return serverError(
-      res,
-      "Initialize error",
-      err?.response?.data || String(err?.message || err),
-    );
+    // SECURITY: Only expose detailed errors in development
+    const errorDetail =
+      process.env.NODE_ENV === "development"
+        ? err?.response?.data || String(err?.message || err)
+        : undefined;
+    return serverError(res, "Initialize error", errorDetail);
   }
 }

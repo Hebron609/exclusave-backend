@@ -37,6 +37,8 @@ function getDb() {
   }
 }
 
+export { getDb };
+
 /**
  * Update system balance after successful transaction
  * Uses .set() with merge to create document if it doesn't exist

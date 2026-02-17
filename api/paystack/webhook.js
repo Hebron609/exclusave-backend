@@ -136,11 +136,11 @@ export default async function handler(req, res) {
 
     return ok(res, { success: true, status });
   } catch (err) {
-    return serverError(
-      res,
-      "Webhook error",
-      err?.response?.data || String(err?.message || err),
-    );
+    // SECURITY: Only expose detailed errors in development
+    const errorDetail = process.env.NODE_ENV === "development" 
+      ? (err?.response?.data || String(err?.message || err))
+      : undefined;
+    return serverError(res, "Webhook error", errorDetail);
   }
 }
 

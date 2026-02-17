@@ -1,10 +1,15 @@
 import "dotenv/config.js";
 import express from "express";
+import helmet from "helmet";
 import initializeHandler from "./api/paystack/initialize.js";
 import verifyHandler from "./api/paystack/verify.js";
 import webhookHandler from "./api/paystack/webhook.js";
 
 const app = express();
+
+// Security headers (helmet)
+app.use(helmet());
+
 app.use(express.json());
 
 // CORS Middleware (global)

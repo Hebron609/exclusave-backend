@@ -3,6 +3,7 @@ import { originCheck, rateLimit } from "../_lib/security.js";
 import {
   storeCompleteTransaction,
   updateSystemBalance,
+  getDb,
 } from "../_lib/firebaseBalance.js";
 import { extractBalanceFromResponse } from "../_lib/balanceParser.js";
 import {
@@ -50,6 +51,34 @@ export default async function handler(req, res) {
       return res
         .status(400)
         .json({ success: false, message: "Missing reference" });
+    }
+
+    // SECURITY: Prevent replay attacks - check if transaction already verified
+    // This ensures idempotency: same reference always returns the cached result
+    const db = getDb?.();
+    if (db) {
+      try {
+        const existingTx = await db
+          .collection("transactions")
+          .doc(reference)
+          .get();
+        if (existingTx.exists) {
+          const txData = existingTx.data();
+          return res.status(200).json({
+            success: true,
+            message: "Transaction already processed",
+            cached: true,
+            reference: reference,
+            order: txData,
+          });
+        }
+      } catch (checkErr) {
+        console.warn(
+          "[Verify] Idempotency check failed, proceeding:",
+          checkErr.message,
+        );
+        // Continue if check fails - don't block transaction
+      }
     }
 
     const PAYSTACK_SECRET =
@@ -269,7 +298,10 @@ export default async function handler(req, res) {
     return res.status(500).json({
       success: false,
       message: "Verify exception",
-      detail: err?.response?.data || String(err?.message || err),
+      // SECURITY: Only expose detailed errors in development
+      ...(process.env.NODE_ENV === "development" && {
+        detail: err?.response?.data || String(err?.message || err),
+      }),
     });
   }
 }
