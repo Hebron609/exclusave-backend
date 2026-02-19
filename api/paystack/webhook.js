@@ -6,6 +6,7 @@ import {
   updateSystemBalance,
   markTransactionFailed,
   isServiceActive,
+  getDb,
 } from "../_lib/firebaseBalance.js";
 import { extractBalanceFromResponse } from "../_lib/balanceParser.js";
 import {
@@ -76,6 +77,8 @@ export default async function handler(req, res) {
       status = "processed";
       const ref = event?.data?.reference;
       const metadata = event?.data?.metadata || {};
+      const paidAt = event?.data?.paid_at; // Extract paid_at from event.data
+      const amount = event?.data?.amount ? event?.data?.amount / 100 : 0; // Convert from kobo to GHS
 
       if (ref) {
         try {
@@ -108,7 +111,7 @@ export default async function handler(req, res) {
               await markTransactionFailed(ref, "Service temporarily inactive");
             } else {
               // Call InstantData API to provision data
-              status = await processDataProvisioning(ref, metadata);
+              status = await processDataProvisioning(ref, metadata, paidAt, amount);
             }
           } else {
             console.log("[Webhook] ℹ️  Non-data product order");
@@ -147,11 +150,20 @@ export default async function handler(req, res) {
 /**
  * Process data provisioning with InstantData API
  */
-async function processDataProvisioning(transactionId, metadata) {
+async function processDataProvisioning(transactionId, metadata, paidAt = null, amount = 0) {
   let dataApiResponse = null;
   let customerEmail = null;
 
   try {
+    // Check for duplicate transactions (prevent double processing)
+    const database = getDb();
+    if (database) {
+      const existingDoc = await database.collection('transactions').doc(transactionId).get();
+      if (existingDoc.exists) {
+        console.log(`[Webhook] ⚠️  Transaction ${transactionId} already processed, skipping duplicate`);
+        return 'duplicate_prevented';
+      }
+    }
     const INSTANTDATA_API_KEY = process.env.INSTANTDATA_API_KEY;
     const INSTANTDATA_API_URL = process.env.INSTANTDATA_API_URL;
 
@@ -198,9 +210,10 @@ async function processDataProvisioning(transactionId, metadata) {
     // ✅ Store COMPLETE transaction with ALL API data
     const paystackForStorage = {
       reference: transactionId,
-      amount: metadata.amount || 0,
+      amount: amount || metadata.amount || 0,
       currency: "GHS",
       status: "success",
+      paid_at: paidAt || new Date().toISOString(), // Use actual paid_at from Paystack
       metadata: metadata,
     };
 
@@ -248,11 +261,7 @@ async function processDataProvisioning(transactionId, metadata) {
       console.error("[Webhook] ❌ InstantData order failed:", errorMsg);
 
       // Store failed transaction
-      await storeCompleteTransaction(
-        paystackForStorage,
-        dataApiResponse,
-        errorMsg,
-      );
+      await markTransactionFailed(transactionId, errorMsg);
 
       // Send error emails
       if (customerEmail) {
@@ -282,8 +291,10 @@ async function processDataProvisioning(transactionId, metadata) {
     await storeCompleteTransaction(
       {
         reference: transactionId,
-        amount: metadata.amount || 0,
+        amount: amount || metadata.amount || 0,
         currency: "GHS",
+        status: "failed",
+        paid_at: paidAt || new Date().toISOString(),
         metadata: metadata,
       },
       dataApiResponse,
