@@ -11,6 +11,8 @@ export default async function handler(req, res) {
   // Set CORS headers for all requests
   const origin = req.headers.origin || "*";
   const allowedOrigins = [
+    "https://exclusave.shop",
+    "https://www.exclusave.shop",
     "https://exclusave-shop.vercel.app",
     "http://localhost:5173",
     "http://localhost:5174",
@@ -18,10 +20,7 @@ export default async function handler(req, res) {
   if (allowedOrigins.includes(origin) || origin === "*") {
     res.setHeader("Access-Control-Allow-Origin", origin);
   } else {
-    res.setHeader(
-      "Access-Control-Allow-Origin",
-      "https://exclusave-shop.vercel.app",
-    );
+    res.setHeader("Access-Control-Allow-Origin", "https://exclusave.shop");
   }
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");

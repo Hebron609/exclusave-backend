@@ -17,6 +17,8 @@ export default async function handler(req, res) {
   // Set CORS headers for all requests
   const origin = req.headers.origin || "*";
   const allowedOrigins = [
+    "https://exclusave.shop",
+    "https://www.exclusave.shop",
     "https://exclusave-shop.vercel.app",
     "http://localhost:5173",
     "http://localhost:5174",
@@ -24,10 +26,7 @@ export default async function handler(req, res) {
   if (allowedOrigins.includes(origin) || origin === "*") {
     res.setHeader("Access-Control-Allow-Origin", origin);
   } else {
-    res.setHeader(
-      "Access-Control-Allow-Origin",
-      "https://exclusave-shop.vercel.app",
-    );
+    res.setHeader("Access-Control-Allow-Origin", "https://exclusave.shop");
   }
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
   res.setHeader(
@@ -137,9 +136,10 @@ export default async function handler(req, res) {
     return ok(res, { success: true, status });
   } catch (err) {
     // SECURITY: Only expose detailed errors in development
-    const errorDetail = process.env.NODE_ENV === "development" 
-      ? (err?.response?.data || String(err?.message || err))
-      : undefined;
+    const errorDetail =
+      process.env.NODE_ENV === "development"
+        ? err?.response?.data || String(err?.message || err)
+        : undefined;
     return serverError(res, "Webhook error", errorDetail);
   }
 }
@@ -149,18 +149,19 @@ export default async function handler(req, res) {
  */
 async function processDataProvisioning(transactionId, metadata) {
   let dataApiResponse = null;
+  let customerEmail = null;
 
   try {
     const INSTANTDATA_API_KEY = process.env.INSTANTDATA_API_KEY;
     const INSTANTDATA_API_URL = process.env.INSTANTDATA_API_URL;
 
+    // Validate API configuration
     if (!INSTANTDATA_API_KEY || !INSTANTDATA_API_URL) {
       throw new Error("InstantData API not configured");
     }
 
     // Ensure customer_email is in metadata for transaction storage
-    const customerEmail =
-      metadata?.customer_email || metadata?.email || "Guest";
+    customerEmail = metadata?.customer_email || metadata?.email || "Guest";
     metadata.customer_email = customerEmail;
 
     console.log("[Webhook] 🚀 Calling InstantData API for:", {
@@ -210,8 +211,6 @@ async function processDataProvisioning(transactionId, metadata) {
     );
 
     // Send email confirmations
-    const customerEmail =
-      metadata?.customer_email || metadata?.email || "Guest";
     if (customerEmail && customerEmail !== "Guest") {
       await sendTransactionEmail(
         customerEmail,
