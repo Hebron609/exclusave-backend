@@ -152,17 +152,29 @@ export async function sendTransactionEmail(
       ],
     };
 
-    await axios.post(SENDGRID_API_URL, payload, {
+    const emailResponse = await axios.post(SENDGRID_API_URL, payload, {
       headers: {
         Authorization: `Bearer ${SENDGRID_API_KEY}`,
         "Content-Type": "application/json",
       },
     });
 
-    console.log(`[EmailService] ✅ Email sent to ${customerEmail}`);
+    console.log(`[EmailService] ✅ Email sent to ${customerEmail} (Status: ${emailResponse.status})`);
     return true;
   } catch (error) {
-    console.error("[EmailService] ❌ Failed to send email:", error.message);
+    console.error("[EmailService] ❌ Failed to send email:", {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      from_email: SENDGRID_FROM_EMAIL,
+      to_email: customerEmail,
+    });
+    console.error("[EmailService] 💡 Troubleshooting tips:");
+    console.error("  1. Verify SendGrid API key is valid (starts with 'SG.')");
+    console.error("  2. Verify sender email in SendGrid dashboard");
+    console.error("  3. Check domain authentication if using custom domain");
+    console.error("  4. Check SendGrid account status (not suspended)");
     return false;
   }
 }
@@ -232,19 +244,24 @@ ${JSON.stringify(
       ],
     };
 
-    await axios.post(SENDGRID_API_URL, payload, {
+    const adminResponse = await axios.post(SENDGRID_API_URL, payload, {
       headers: {
         Authorization: `Bearer ${SENDGRID_API_KEY}`,
         "Content-Type": "application/json",
       },
     });
 
-    console.log(`[EmailService] ✅ Admin notification sent`);
+    console.log(`[EmailService] ✅ Admin notification sent (Status: ${adminResponse.status})`);
     return true;
   } catch (error) {
     console.error(
       "[EmailService] ❌ Failed to send admin notification:",
-      error.message,
+      {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+      },
     );
     return false;
   }

@@ -111,7 +111,12 @@ export default async function handler(req, res) {
               await markTransactionFailed(ref, "Service temporarily inactive");
             } else {
               // Call InstantData API to provision data
-              status = await processDataProvisioning(ref, metadata, paidAt, amount);
+              status = await processDataProvisioning(
+                ref,
+                metadata,
+                paidAt,
+                amount,
+              );
             }
           } else {
             console.log("[Webhook] ℹ️  Non-data product order");
@@ -150,7 +155,12 @@ export default async function handler(req, res) {
 /**
  * Process data provisioning with InstantData API
  */
-async function processDataProvisioning(transactionId, metadata, paidAt = null, amount = 0) {
+async function processDataProvisioning(
+  transactionId,
+  metadata,
+  paidAt = null,
+  amount = 0,
+) {
   let dataApiResponse = null;
   let customerEmail = null;
 
@@ -158,10 +168,15 @@ async function processDataProvisioning(transactionId, metadata, paidAt = null, a
     // Check for duplicate transactions (prevent double processing)
     const database = getDb();
     if (database) {
-      const existingDoc = await database.collection('transactions').doc(transactionId).get();
+      const existingDoc = await database
+        .collection("transactions")
+        .doc(transactionId)
+        .get();
       if (existingDoc.exists) {
-        console.log(`[Webhook] ⚠️  Transaction ${transactionId} already processed, skipping duplicate`);
-        return 'duplicate_prevented';
+        console.log(
+          `[Webhook] ⚠️  Transaction ${transactionId} already processed, skipping duplicate`,
+        );
+        return "duplicate_prevented";
       }
     }
     const INSTANTDATA_API_KEY = process.env.INSTANTDATA_API_KEY;
@@ -201,9 +216,12 @@ async function processDataProvisioning(transactionId, metadata, paidAt = null, a
 
     dataApiResponse = response.data;
 
+    // Extract order_id from correct location (check both top-level and nested)
+    const extractedOrderId = response.data.order_id || response.data.data?.order_id || null;
+    
     console.log("[Webhook] 📊 InstantData response received:", {
       status: response.data.status,
-      order_id: response.data.order_id, // ✅ Correct order_id at top level
+      order_id: extractedOrderId,
       has_balance: !!response.data.data?.remaining_balance,
     });
 
