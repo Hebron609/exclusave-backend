@@ -48,11 +48,13 @@ export async function updateSystemBalance(newBalance) {
   if (!database) return false;
 
   try {
+    // Import Firestore Timestamp
+    const { Timestamp } = await import("firebase-admin/firestore");
     await database.collection("systemSettings").doc("instantDataConfig").set(
       {
         currentBalance: newBalance,
-        lastUpdated: new Date().toISOString(),
-        lastUpdateTimestamp: new Date(),
+        lastUpdated: Timestamp.now(),
+        lastUpdateTimestamp: Timestamp.now(),
       },
       { merge: true }, // Creates document if doesn't exist
     );
@@ -118,8 +120,15 @@ export async function storeCompleteTransaction(
       paystackData.customer?.email ||
       "Guest";
 
-    // Extract customer name from metadata
-    const customerName = paystackData.metadata?.customer_name || "Guest";
+    // Extract customer name from metadata (check multiple fields)
+    const customerName =
+      paystackData.metadata?.customer_name ||
+      paystackData.metadata?.name ||
+      paystackData.customer?.name ||
+      "Guest";
+
+    // Import Firestore Timestamp
+    const { Timestamp } = await import("firebase-admin/firestore");
 
     // Get all relevant data from both APIs
     const transactionData = {
@@ -240,8 +249,8 @@ export async function storeCompleteTransaction(
 
       // Processing status
       status: dataStatus === "success" ? "completed" : "failed",
-      timestamp: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
+      timestamp: Timestamp.now(),
+      createdAt: Timestamp.now(),
       formattedDate: new Date().toLocaleDateString("en-GB", {
         day: "2-digit",
         month: "2-digit",
@@ -369,12 +378,17 @@ export async function isServiceActive() {
       .doc("instantDataConfig")
       .get();
 
-    return doc.exists ? doc.data()?.isServiceActive !== false : false;
+    // If config missing, default to true (service enabled)
+    if (!doc.exists) return true;
+    const data = doc.data();
+    // If isServiceActive is undefined or true, service is enabled
+    return data?.isServiceActive !== false;
   } catch (error) {
     console.error(
       "[Firestore] ❌ Failed to check service status:",
       error.message,
     );
-    return false;
+    // On error, default to service enabled
+    return true;
   }
 }

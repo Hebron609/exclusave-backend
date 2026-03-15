@@ -5,7 +5,38 @@
  * SECURITY: All admin endpoints must use this middleware
  */
 
-import * as admin from "firebase-admin";
+import admin from "firebase-admin";
+
+function ensureAdminInitialized() {
+  if (admin.apps.length) return;
+  let serviceAccount;
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    // Fix private key newlines if needed
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(
+        /\\n/g,
+        "\n",
+      );
+    }
+  } else {
+    serviceAccount = {
+      project_id: process.env.FIREBASE_PROJECT_ID,
+      private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+      client_email: process.env.FIREBASE_CLIENT_EMAIL,
+    };
+  }
+  if (!serviceAccount.project_id) {
+    throw new Error("Firebase admin service account not configured");
+  }
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: serviceAccount.project_id,
+      privateKey: serviceAccount.private_key,
+      clientEmail: serviceAccount.client_email,
+    }),
+  });
+}
 
 /**
  * Verify Firebase token and check if user is admin
@@ -22,9 +53,14 @@ export async function verifyAdminToken(req) {
   const token = authHeader.split("Bearer ")[1];
 
   try {
+    ensureAdminInitialized();
     // Verify Firebase ID token
     const decodedToken = await admin.auth().verifyIdToken(token);
     const uid = decodedToken.uid;
+
+    if (decodedToken.admin === true || decodedToken.isAdmin === true) {
+      return uid;
+    }
 
     // Check if user has admin document in Firestore
     const db = admin.firestore();

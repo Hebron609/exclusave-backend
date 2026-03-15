@@ -13,6 +13,7 @@ import {
   sendTransactionEmail,
   sendAdminNotification,
 } from "../_lib/emailService.js";
+import logger from "../_lib/logger.js";
 
 export default async function handler(req, res) {
   // Set CORS headers for all requests
@@ -104,7 +105,7 @@ export default async function handler(req, res) {
             // Service is active check
             const active = await isServiceActive();
             if (!active) {
-              console.warn(
+              logger.warn(
                 "[Webhook] ⚠️  Service is inactive, marking order as failed",
               );
               status = "service_inactive";
@@ -119,27 +120,23 @@ export default async function handler(req, res) {
               );
             }
           } else {
-            console.log("[Webhook] ℹ️  Non-data product order");
+            logger.info("[Webhook] ℹ️  Non-data product order");
           }
         } catch (verifyErr) {
           status = "verify_failed";
-          console.error(
-            "[Webhook] ❌ Payment verification failed:",
-            verifyErr.message,
-          );
+          logger.error("[Webhook] ❌ Payment verification failed", {
+            error: verifyErr.message,
+          });
         }
       }
     }
 
     const durationMs = Date.now() - started;
-    console.log(
-      "[Webhook] event:",
-      event?.event,
-      "status:",
+    logger.info("[Webhook] event", {
+      event: event?.event,
       status,
-      "duration_ms:",
-      durationMs,
-    );
+      duration_ms: durationMs,
+    });
 
     return ok(res, { success: true, status });
   } catch (err) {
@@ -173,7 +170,7 @@ async function processDataProvisioning(
         .doc(transactionId)
         .get();
       if (existingDoc.exists) {
-        console.log(
+        logger.warn(
           `[Webhook] ⚠️  Transaction ${transactionId} already processed, skipping duplicate`,
         );
         return "duplicate_prevented";
@@ -191,7 +188,7 @@ async function processDataProvisioning(
     customerEmail = metadata?.customer_email || metadata?.email || "Guest";
     metadata.customer_email = customerEmail;
 
-    console.log("[Webhook] 🚀 Calling InstantData API for:", {
+    logger.info("[Webhook] 🚀 Calling InstantData API for", {
       network: metadata.network,
       phone: metadata.phone_number,
       data_amount: metadata.data_amount,
@@ -217,9 +214,10 @@ async function processDataProvisioning(
     dataApiResponse = response.data;
 
     // Extract order_id from correct location (check both top-level and nested)
-    const extractedOrderId = response.data.order_id || response.data.data?.order_id || null;
-    
-    console.log("[Webhook] 📊 InstantData response received:", {
+    const extractedOrderId =
+      response.data.order_id || response.data.data?.order_id || null;
+
+    logger.info("[Webhook] 📊 InstantData response received", {
       status: response.data.status,
       order_id: extractedOrderId,
       has_balance: !!response.data.data?.remaining_balance,
@@ -265,18 +263,20 @@ async function processDataProvisioning(
         // Update system balance
         await updateSystemBalance(newBalance);
 
-        console.log(
+        logger.info(
           `[Webhook] ✅ Data provisioned successfully. New balance: GH₵${newBalance.toFixed(2)} | Order: ${response.data.order_id}`,
         );
         return "data_provisioned";
       } else {
-        console.error("[Webhook] ❌ No balance in response");
+        logger.error("[Webhook] ❌ No balance in response");
         return "balance_extract_failed";
       }
     } else {
       // Order failed
       const errorMsg = response.data.message || "Unknown error";
-      console.error("[Webhook] ❌ InstantData order failed:", errorMsg);
+      logger.error("[Webhook] ❌ InstantData order failed", {
+        error: errorMsg,
+      });
 
       // Store failed transaction
       await markTransactionFailed(transactionId, errorMsg);
@@ -299,7 +299,7 @@ async function processDataProvisioning(
       return "instantdata_failed";
     }
   } catch (error) {
-    console.error("[Webhook] ❌ Data provisioning error:", {
+    logger.error("[Webhook] ❌ Data provisioning error", {
       message: error.message,
       status: error?.response?.status,
       data: error?.response?.data,

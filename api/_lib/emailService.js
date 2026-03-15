@@ -4,6 +4,7 @@
  */
 
 import axios from "axios";
+import validator from "validator";
 
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
@@ -30,15 +31,23 @@ export async function sendTransactionEmail(
 
   try {
     const subject = error ? "❌ Data Order Failed" : "✅ Data Order Successful";
-
     const statusColor = error ? "#dc2626" : "#059669";
     const statusText = error ? "FAILED" : "PROCESSING";
-
     const orderInfo = instantDataResponse?.data || {};
-
+    // Sanitize all dynamic fields
+    const safeSubject = validator.escape(subject);
+    const safeReference = validator.escape(
+      String(transactionData?.reference || "N/A"),
+    );
+    const safeNetwork = validator.escape(
+      String(transactionData?.order?.network || "N/A"),
+    );
+    const safePhone = validator.escape(
+      String(transactionData?.order?.phone_number || "N/A"),
+    );
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: ${statusColor}; margin-bottom: 20px;">${subject}</h2>
+        <h2 style="color: ${statusColor}; margin-bottom: 20px;">${safeSubject}</h2>
         
         <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
           <h3 style="margin: 0 0 15px 0; color: #374151;">Order Details</h3>
@@ -46,15 +55,15 @@ export async function sendTransactionEmail(
           <table style="width: 100%; border-collapse: collapse;">
             <tr style="border-bottom: 1px solid #d1d5db;">
               <td style="padding: 10px 0; color: #6b7280; font-weight: 600;">Reference:</td>
-              <td style="padding: 10px 0; color: #111827;">${transactionData?.reference || "N/A"}</td>
+              <td style="padding: 10px 0; color: #111827;">${safeReference}</td>
             </tr>
             <tr style="border-bottom: 1px solid #d1d5db;">
               <td style="padding: 10px 0; color: #6b7280; font-weight: 600;">Network:</td>
-              <td style="padding: 10px 0; color: #111827;">${transactionData?.order?.network || "N/A"}</td>
+              <td style="padding: 10px 0; color: #111827;">${safeNetwork}</td>
             </tr>
             <tr style="border-bottom: 1px solid #d1d5db;">
               <td style="padding: 10px 0; color: #6b7280; font-weight: 600;">Phone:</td>
-              <td style="padding: 10px 0; color: #111827;">${transactionData?.order?.phone_number || "N/A"}</td>
+              <td style="padding: 10px 0; color: #111827;">${safePhone}</td>
             </tr>
             <tr style="border-bottom: 1px solid #d1d5db;">
               <td style="padding: 10px 0; color: #6b7280; font-weight: 600;">Data Amount:</td>
@@ -159,7 +168,9 @@ export async function sendTransactionEmail(
       },
     });
 
-    console.log(`[EmailService] ✅ Email sent to ${customerEmail} (Status: ${emailResponse.status})`);
+    console.log(
+      `[EmailService] ✅ Email sent to ${customerEmail} (Status: ${emailResponse.status})`,
+    );
     return true;
   } catch (error) {
     console.error("[EmailService] ❌ Failed to send email:", {
@@ -251,18 +262,342 @@ ${JSON.stringify(
       },
     });
 
-    console.log(`[EmailService] ✅ Admin notification sent (Status: ${adminResponse.status})`);
+    console.log(
+      `[EmailService] ✅ Admin notification sent (Status: ${adminResponse.status})`,
+    );
     return true;
   } catch (error) {
-    console.error(
-      "[EmailService] ❌ Failed to send admin notification:",
+    console.error("[EmailService] ❌ Failed to send admin notification:", {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    });
+    return false;
+  }
+}
+
+/**
+ * Send vendor application decision email
+ */
+export async function sendVendorDecisionEmail(
+  vendorEmail,
+  vendorName,
+  status,
+  note = "",
+  loginEmail = "",
+  tempPassword = "",
+) {
+  if (!SENDGRID_API_KEY || !SENDGRID_FROM_EMAIL) {
+    console.warn("[EmailService] ⚠️  SendGrid not configured, skipping email");
+    return false;
+  }
+
+  if (!vendorEmail) {
+    console.warn("[EmailService] ⚠️  No vendor email provided");
+    return false;
+  }
+
+  const isApproved = status === "approved";
+  const subject = isApproved
+    ? "✅ Your ExcluSave vendor application was approved"
+    : "❌ Your ExcluSave vendor application was declined";
+  const statusColor = isApproved ? "#16a34a" : "#dc2626";
+  const statusText = isApproved ? "APPROVED" : "REJECTED";
+  // Sanitize all dynamic fields
+  const safeSubject = validator.escape(subject);
+  const safeVendorName = validator.escape(String(vendorName || "Vendor"));
+  const safeStatusText = validator.escape(statusText);
+  const safeNote = note ? validator.escape(String(note)) : "";
+  const safeLoginEmail = loginEmail ? validator.escape(String(loginEmail)) : "";
+  const safeTempPassword = tempPassword
+    ? validator.escape(String(tempPassword))
+    : "";
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <h2 style="color: ${statusColor}; margin-bottom: 12px;">${safeSubject}</h2>
+      <p style="margin: 0 0 12px 0; color: #111827;">
+        Hello ${safeVendorName}, your application status is <strong>${safeStatusText}</strong>.
+      </p>
+      ${
+        safeNote
+          ? `<div style="background: #f3f4f6; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+              <p style="margin: 0; color: #374151;">${safeNote}</p>
+            </div>`
+          : ""
+      }
+      ${
+        isApproved
+          ? `<p style="margin: 0 0 12px 0; color: #111827;">You can now sign in to your vendor dashboard and start adding products.</p>
+             <p style="margin: 0 0 8px 0; color: #111827;"><strong>Login URL:</strong> https://exclusave-shop.vercel.app/vendor/login.html</p>
+             ${
+               safeLoginEmail
+                 ? `<p style="margin: 0 0 8px 0; color: #111827;"><strong>Email:</strong> ${safeLoginEmail}</p>`
+                 : ""
+             }
+             ${
+               safeTempPassword
+                 ? `<p style="margin: 0 0 8px 0; color: #111827;"><strong>Temporary password:</strong> ${safeTempPassword}</p>
+                    <p style="margin: 0; color: #6b7280;">Please change your password after your first login.</p>`
+                 : ""
+             }`
+          : `<p style="margin: 0; color: #6b7280;">If you have questions, reply to this email or contact support.</p>`
+      }
+    </div>
+  `;
+
+  const payload = {
+    personalizations: [
       {
-        message: error.message,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        data: error.response?.data,
+        to: [{ email: vendorEmail }],
+        subject: subject,
       },
+    ],
+    from: { email: SENDGRID_FROM_EMAIL, name: "ExcluSave" },
+    content: [
+      {
+        type: "text/html",
+        value: htmlContent,
+      },
+    ],
+  };
+
+  try {
+    const response = await axios.post(SENDGRID_API_URL, payload, {
+      headers: {
+        Authorization: `Bearer ${SENDGRID_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+    console.log(
+      `[EmailService] ✅ Vendor decision email sent to ${vendorEmail} (Status: ${response.status})`,
     );
+    console.log("[EmailService] 📌 Vendor decision context:", {
+      vendorEmail,
+      vendorName,
+      status,
+      hasNote: Boolean(note),
+      loginEmail: loginEmail || "",
+      tempPasswordIssued: Boolean(tempPassword),
+    });
+    return true;
+  } catch (error) {
+    console.error("[EmailService] ❌ Failed to send vendor decision email:", {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    });
+    return false;
+  }
+}
+
+/**
+ * Send vendor application received email
+ */
+export async function sendVendorApplicationReceivedEmail(
+  vendorEmail,
+  vendorName,
+  shopName,
+) {
+  if (!SENDGRID_API_KEY || !SENDGRID_FROM_EMAIL) {
+    console.warn("[EmailService] ⚠️  SendGrid not configured, skipping email");
+    return false;
+  }
+
+  if (!vendorEmail) {
+    console.warn("[EmailService] ⚠️  No vendor email provided");
+    return false;
+  }
+
+  const subject = "✅ We received your vendor application";
+  // Sanitize all dynamic fields
+  const safeVendorName = validator.escape(String(vendorName || "Vendor"));
+  const safeShopName = validator.escape(String(shopName || "your shop"));
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <h2 style="color: #111827; margin-bottom: 12px;">Thanks for applying, ${safeVendorName}!</h2>
+      <p style="margin: 0 0 12px 0; color: #374151;">We received your application for <strong>${safeShopName}</strong>.</p>
+      <p style="margin: 0 0 12px 0; color: #6b7280;">Our team will review it within 24-48 hours and notify you by email.</p>
+      <p style="margin: 0; color: #6b7280;">If you have questions, reply to this email.</p>
+    </div>
+  `;
+
+  const payload = {
+    personalizations: [
+      {
+        to: [{ email: vendorEmail }],
+        subject: subject,
+      },
+    ],
+    from: { email: SENDGRID_FROM_EMAIL, name: "ExcluSave" },
+    content: [
+      {
+        type: "text/html",
+        value: htmlContent,
+      },
+    ],
+  };
+
+  try {
+    const response = await axios.post(SENDGRID_API_URL, payload, {
+      headers: {
+        Authorization: `Bearer ${SENDGRID_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+    console.log(
+      `[EmailService] ✅ Application received email sent to ${vendorEmail} (Status: ${response.status})`,
+    );
+    return true;
+  } catch (error) {
+    console.error("[EmailService] ❌ Failed to send application email:", {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    });
+    return false;
+  }
+}
+
+/**
+ * Send new shop alert to admins
+ */
+export async function sendNewShopAlertEmail(adminEmails, vendorData = {}) {
+  if (!SENDGRID_API_KEY || !SENDGRID_FROM_EMAIL) {
+    console.warn("[EmailService] ⚠️  SendGrid not configured, skipping email");
+    return false;
+  }
+
+  const recipients = Array.isArray(adminEmails) ? adminEmails : [];
+  if (!recipients.length) {
+    console.warn("[EmailService] ⚠️  No admin emails provided");
+    return false;
+  }
+
+  const subject = "🏪 New shop approved on ExcluSave";
+  // Sanitize all dynamic fields
+  const safeShopName = validator.escape(
+    String(vendorData.shopName || "A vendor"),
+  );
+  const safeEmail = validator.escape(String(vendorData.email || "-"));
+  const safePhone = validator.escape(String(vendorData.phone || "-"));
+  const safeStatus = validator.escape(String(vendorData.status || "approved"));
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <h2 style="color: #111827; margin-bottom: 12px;">New Shop Approved</h2>
+      <p style="margin: 0 0 12px 0; color: #374151;"><strong>${safeShopName}</strong> has been approved.</p>
+      <ul style="color: #6b7280; padding-left: 20px;">
+        <li>Vendor email: ${safeEmail}</li>
+        <li>Phone: ${safePhone}</li>
+        <li>Status: ${safeStatus}</li>
+      </ul>
+    </div>
+  `;
+
+  const payload = {
+    personalizations: [
+      {
+        to: recipients.map((email) => ({ email })),
+        subject: subject,
+      },
+    ],
+    from: { email: SENDGRID_FROM_EMAIL, name: "ExcluSave" },
+    content: [
+      {
+        type: "text/html",
+        value: htmlContent,
+      },
+    ],
+  };
+
+  try {
+    const response = await axios.post(SENDGRID_API_URL, payload, {
+      headers: {
+        Authorization: `Bearer ${SENDGRID_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+    console.log(
+      `[EmailService] ✅ New shop alert sent to ${recipients.length} admins (Status: ${response.status})`,
+    );
+    return true;
+  } catch (error) {
+    console.error("[EmailService] ❌ Failed to send new shop alert:", {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    });
+    return false;
+  }
+}
+
+/**
+ * Send vendor fee reminder email
+ */
+export async function sendVendorFeeReminderEmail(
+  vendorEmail,
+  vendorName,
+  dueDate,
+) {
+  if (!SENDGRID_API_KEY || !SENDGRID_FROM_EMAIL) {
+    console.warn("[EmailService] ⚠️  SendGrid not configured, skipping email");
+    return false;
+  }
+
+  if (!vendorEmail) {
+    console.warn("[EmailService] ⚠️  No vendor email provided");
+    return false;
+  }
+
+  const subject = "⏰ Monthly shop fee reminder";
+  // Sanitize all dynamic fields
+  const safeVendorName = validator.escape(String(vendorName || "Vendor"));
+  const safeDueDate = validator.escape(String(dueDate || "soon"));
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <h2 style="color: #111827; margin-bottom: 12px;">Monthly fee reminder</h2>
+      <p style="margin: 0 0 12px 0; color: #374151;">Hello ${safeVendorName}, your shop fee is due on <strong>${safeDueDate}</strong>.</p>
+      <p style="margin: 0; color: #6b7280;">Please log in to your vendor dashboard to complete payment.</p>
+    </div>
+  `;
+
+  const payload = {
+    personalizations: [
+      {
+        to: [{ email: vendorEmail }],
+        subject: subject,
+      },
+    ],
+    from: { email: SENDGRID_FROM_EMAIL, name: "ExcluSave" },
+    content: [
+      {
+        type: "text/html",
+        value: htmlContent,
+      },
+    ],
+  };
+
+  try {
+    const response = await axios.post(SENDGRID_API_URL, payload, {
+      headers: {
+        Authorization: `Bearer ${SENDGRID_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+    console.log(
+      `[EmailService] ✅ Fee reminder email sent to ${vendorEmail} (Status: ${response.status})`,
+    );
+    return true;
+  } catch (error) {
+    console.error("[EmailService] ❌ Failed to send fee reminder email:", {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+    });
     return false;
   }
 }

@@ -7,6 +7,7 @@ const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000);
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 100);
 const RATE_LIMIT_BURST = Number(process.env.RATE_LIMIT_BURST || 20);
 
+import logger from "./logger.js";
 const buckets = new Map();
 
 function getClientIp(req) {
@@ -25,8 +26,22 @@ export function originCheck(req, res) {
   const isDevelopment =
     origin?.includes("localhost") || referer?.includes("localhost");
 
+  // Always allow these in production
+  const alwaysAllowed = [
+    "https://www.exclusave.shop",
+    "https://exclusave-shop.vercel.app",
+    "https://exclusave-backend.vercel.app",
+  ];
+
+  // Parse CORS_ORIGIN env (comma separated)
+  const envAllowed = (process.env.CORS_ORIGIN || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const ALLOWED = Array.from(new Set([...alwaysAllowed, ...envAllowed]));
+
   if (isDevelopment) {
-    // For development, be permissive
     res.setHeader("Access-Control-Allow-Origin", origin || "*");
     res.setHeader(
       "Access-Control-Allow-Methods",
@@ -34,17 +49,10 @@ export function originCheck(req, res) {
     );
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization",
+      "Content-Type, Authorization, x-csrf-token",
     );
     res.setHeader("Access-Control-Allow-Credentials", "true");
   } else {
-    // Production: whitelist check
-    const ALLOWED = [
-      "https://exclusave-backend.vercel.app",
-      "https://exclusave-shop.vercel.app",
-      process.env.CORS_ORIGIN || "",
-    ].filter(Boolean);
-
     if (origin && ALLOWED.includes(origin)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader(
@@ -53,7 +61,7 @@ export function originCheck(req, res) {
       );
       res.setHeader(
         "Access-Control-Allow-Headers",
-        "Content-Type, Authorization",
+        "Content-Type, Authorization, x-csrf-token",
       );
       res.setHeader("Access-Control-Allow-Credentials", "true");
     } else if (!origin) {
@@ -61,6 +69,7 @@ export function originCheck(req, res) {
       res.setHeader("Access-Control-Allow-Origin", "*");
     } else {
       // Origin not allowed
+      res.setHeader("Access-Control-Allow-Origin", "null");
       res
         .status(403)
         .json({ success: false, message: "Origin not allowed: " + origin });
@@ -93,6 +102,13 @@ export function rateLimit(req, res) {
   entry.last = now;
   if (entry.tokens < 1) {
     buckets.set(ip, entry);
+    logger.warn("[RateLimit] Too many requests", {
+      ip,
+      path: req.path,
+      method: req.method,
+      headers: req.headers,
+      time: new Date().toISOString(),
+    });
     res.status(429).json({
       success: false,
       message: "Too many requests. Please try again later.",

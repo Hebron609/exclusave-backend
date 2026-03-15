@@ -4,14 +4,25 @@ import {
   storeCompleteTransaction,
   updateSystemBalance,
   getDb,
+  isServiceActive,
 } from "../_lib/firebaseBalance.js";
 import { extractBalanceFromResponse } from "../_lib/balanceParser.js";
 import {
   sendTransactionEmail,
   sendAdminNotification,
 } from "../_lib/emailService.js";
+import logger from "../_lib/logger.js";
 
 export default async function handler(req, res) {
+  // Check if service is active before proceeding
+  const serviceActive = await isServiceActive();
+  if (!serviceActive) {
+    return res.status(503).json({
+      success: false,
+      message:
+        "Sorry, our service is currently unavailable as it has been temporarily disabled by the administrator. No payments or data provisioning can be processed at this time. Please check back soon or contact support if you have questions.",
+    });
+  }
   // Set CORS headers for all requests
   const origin = req.headers.origin || "*";
   const allowedOrigins = [
@@ -72,10 +83,9 @@ export default async function handler(req, res) {
           });
         }
       } catch (checkErr) {
-        console.warn(
-          "[Verify] Idempotency check failed, proceeding:",
-          checkErr.message,
-        );
+        logger.warn("[Verify] Idempotency check failed, proceeding", {
+          error: checkErr.message,
+        });
         // Continue if check fails - don't block transaction
       }
     }
@@ -145,7 +155,7 @@ export default async function handler(req, res) {
           throw new Error("InstantData API key not configured");
         }
 
-        console.log("[Verify] 🚀 Calling InstantData API:", {
+        logger.info("[Verify] 🚀 Calling InstantData API", {
           url: INSTANTDATA_API_URL,
           network,
           phone_number,
@@ -168,10 +178,9 @@ export default async function handler(req, res) {
           },
         );
 
-        console.log(
-          "[Verify] ✅ InstantData API Success:",
-          dataApiResponse.data,
-        );
+        logger.info("[Verify] ✅ InstantData API Success", {
+          data: dataApiResponse.data,
+        });
 
         // ✅ Store COMPLETE transaction with ALL API data
         const paystackForStorage = {
@@ -214,7 +223,7 @@ export default async function handler(req, res) {
           );
           if (newBalance !== null) {
             await updateSystemBalance(newBalance);
-            console.log(
+            logger.info(
               `[Verify] ✅ Balance updated: GH₵${newBalance.toFixed(2)} | Order: ${dataApiResponse.data.order_id}`,
             );
           }
@@ -222,7 +231,7 @@ export default async function handler(req, res) {
       } catch (dataErr) {
         dataApiError =
           dataErr?.response?.data || dataErr?.message || String(dataErr);
-        console.error("[Verify] ❌ Data API error:", dataApiError);
+        logger.error("[Verify] ❌ Data API error", { error: dataApiError });
 
         // Store transaction with error info
         const paystackForStorage = {

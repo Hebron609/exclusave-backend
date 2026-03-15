@@ -1,4 +1,5 @@
 import axios from "axios";
+import { v4 as uuidv4 } from "uuid";
 import {
   originCheck,
   rateLimit,
@@ -6,30 +7,35 @@ import {
   serverError,
   ok,
 } from "../_lib/security.js";
+import logger from "../_lib/logger.js";
 
 export default async function handler(req, res) {
-  // Set CORS headers for all requests
-  const origin = req.headers.origin || "*";
-  const allowedOrigins = [
-    "https://exclusave.shop",
-    "https://www.exclusave.shop",
-    "https://exclusave-shop.vercel.app",
-    "http://localhost:5173",
-    "http://localhost:5174",
-  ];
-  if (allowedOrigins.includes(origin) || origin === "*") {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "https://exclusave.shop");
-  }
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader("Access-Control-Allow-Credentials", "true");
+  // Set CORS headers using unified logic
+  originCheck(req, res);
 
   // Handle OPTIONS preflight
   if (req.method === "OPTIONS") {
     return res.status(204).end();
   }
+
+  // Check if service is active before proceeding
+  const { isServiceActive } = await import("../_lib/firebaseBalance.js");
+  const serviceActive = await isServiceActive();
+  if (!serviceActive) {
+    return res.status(503).json({
+      success: false,
+      message:
+        "Sorry, our service is currently unavailable as it has been temporarily disabled by the administrator. No payments can be initialized at this time. Please check back soon or contact support if you have questions.",
+    });
+  }
+
+  // Log incoming request for debugging
+  logger.info("[Paystack MoMo Init] Incoming request", {
+    method: req.method,
+    url: req.url,
+    body: req.body,
+    headers: req.headers,
+  });
 
   if (req.method !== "POST") {
     return res
@@ -58,6 +64,9 @@ export default async function handler(req, res) {
       process.env.PAYSTACK_TEST_PUBLIC_KEY;
 
     if (!PAYSTACK_SECRET) {
+      logger.error(
+        "[Paystack MoMo Init] Missing Paystack secret key in environment",
+      );
       return serverError(res, "Server not configured with Paystack secret key");
     }
 
@@ -73,21 +82,35 @@ export default async function handler(req, res) {
           : ["mobile_money", "ussd"],
     };
 
-    const r = await axios.post(
-      "https://api.paystack.co/transaction/initialize",
-      body,
-      {
-        headers: {
-          Authorization: `Bearer ${PAYSTACK_SECRET}`,
-          "Content-Type": "application/json",
+    let r;
+    try {
+      r = await axios.post(
+        "https://api.paystack.co/transaction/initialize",
+        body,
+        {
+          headers: {
+            Authorization: `Bearer ${PAYSTACK_SECRET}`,
+            "Content-Type": "application/json",
+          },
         },
-      },
-    );
+      );
+    } catch (err) {
+      logger.error("[Paystack MoMo Init] Paystack API error", {
+        error: err?.response?.data || err,
+      });
+      return serverError(
+        res,
+        "Paystack API error",
+        process.env.NODE_ENV === "development"
+          ? err?.response?.data
+          : undefined,
+      );
+    }
     if (!r.data || !r.data.status) {
       return serverError(res, "Paystack init failed", r.data);
     }
 
-    console.log("[Initialize] ✅ Paystack response:", {
+    logger.info("[Paystack MoMo Init] ✅ Paystack response:", {
       reference: r.data.data.reference,
       authorization_url: r.data.data.authorization_url,
       has_url: !!r.data.data.authorization_url,
@@ -101,7 +124,7 @@ export default async function handler(req, res) {
       publicKey: PAYSTACK_PUBLIC,
     });
   } catch (err) {
-    // SECURITY: Only expose detailed errors in development
+    logger.error("[Paystack MoMo Init] Unhandled error", { error: err });
     const errorDetail =
       process.env.NODE_ENV === "development"
         ? err?.response?.data || String(err?.message || err)
