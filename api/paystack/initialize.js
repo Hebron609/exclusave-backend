@@ -44,7 +44,8 @@ export default async function handler(req, res) {
   }
   if (!rateLimit(req, res)) return;
   try {
-    const { email, amount, callback_url, metadata, channels } = req.body || {};
+    const { email, amount, callback_url, metadata, channels, couponCode } =
+      req.body || {};
     if (!email || !amount) {
       return bad(res, "Missing email or amount");
     }
@@ -70,12 +71,69 @@ export default async function handler(req, res) {
       return serverError(res, "Server not configured with Paystack secret key");
     }
 
+    const metadataInput =
+      metadata && typeof metadata === "object" && !Array.isArray(metadata)
+        ? metadata
+        : {};
+
+    const isVendorApplicationFee =
+      metadataInput?.type === "vendor_application_fee";
+    const configuredVendorFeeGhs = Number(
+      process.env.VENDOR_MONTHLY_FEE_GHS || 120,
+    );
+    const configuredDiscountPercent = Number(
+      process.env.VENDOR_COUPON_DISCOUNT_PERCENT || 20,
+    );
+    const configuredCouponCode = String(
+      process.env.VENDOR_COUPON_CODE || "MCDONALD",
+    )
+      .trim()
+      .toUpperCase();
+
+    let finalAmount = Math.round(amt);
+    let metadataToSend = metadataInput;
+
+    if (isVendorApplicationFee) {
+      const baseAmountPesewas = Math.round(configuredVendorFeeGhs * 100);
+      const normalizedCouponCode = String(couponCode || "")
+        .trim()
+        .toUpperCase();
+
+      finalAmount = baseAmountPesewas;
+
+      if (normalizedCouponCode) {
+        if (normalizedCouponCode !== configuredCouponCode) {
+          return bad(res, "Invalid coupon code");
+        }
+
+        finalAmount = Math.max(
+          100,
+          Math.round(baseAmountPesewas * (1 - configuredDiscountPercent / 100)),
+        );
+      }
+
+      metadataToSend = {
+        ...metadataInput,
+        type: "vendor_application_fee",
+        baseAmountPesewas,
+        chargedAmountPesewas: finalAmount,
+        ...(normalizedCouponCode
+          ? {
+              coupon: {
+                code: normalizedCouponCode,
+                percent: configuredDiscountPercent,
+              },
+            }
+          : {}),
+      };
+    }
+
     const body = {
       email: safeEmail,
-      amount: Math.round(amt), // Frontend already sends in pesewas
+      amount: finalAmount,
       currency: "GHS",
       ...(callback_url ? { callback_url: String(callback_url) } : {}),
-      ...(metadata ? { metadata } : {}),
+      ...(metadataToSend ? { metadata: metadataToSend } : {}),
       channels:
         Array.isArray(channels) && channels.length > 0
           ? channels
@@ -122,6 +180,8 @@ export default async function handler(req, res) {
       access_code: r.data.data.access_code,
       authorization_url: r.data.data.authorization_url,
       publicKey: PAYSTACK_PUBLIC,
+      amount: finalAmount,
+      ...(isVendorApplicationFee ? { metadata: metadataToSend } : {}),
     });
   } catch (err) {
     logger.error("[Paystack MoMo Init] Unhandled error", { error: err });

@@ -56,7 +56,7 @@ export default async function handler(req, res) {
   }
   if (!rateLimit(req, res)) return;
   try {
-    const { reference } = req.body || {};
+    const { reference, expectedType } = req.body || {};
     if (!reference) {
       return res
         .status(400)
@@ -124,6 +124,16 @@ export default async function handler(req, res) {
         message: "Transaction not successful",
         paystack: data,
       });
+    }
+
+    if (expectedType) {
+      const actualType = data?.metadata?.type;
+      if (actualType !== expectedType) {
+        return res.status(400).json({
+          success: false,
+          message: "Payment type mismatch",
+        });
+      }
     }
 
     // Extract metadata from Paystack response

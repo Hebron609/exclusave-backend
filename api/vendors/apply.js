@@ -1,4 +1,5 @@
 import admin from "firebase-admin";
+import axios from "axios";
 import { body, validationResult } from "express-validator";
 import {
   sendVendorApplicationReceivedEmail,
@@ -61,13 +62,11 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Invalid input",
-          errors: errors.array(),
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid input",
+        errors: errors.array(),
+      });
     }
   }
   const origin = req.headers.origin || "*";
@@ -96,19 +95,91 @@ export default async function handler(req, res) {
         .json({ success: false, message: `Missing: ${missing.join(", ")}` });
     }
 
+    const normalizedPayload = { ...payload };
+
+    if (normalizedPayload.monthlyFeeStatus === "paid") {
+      if (!normalizedPayload.paymentReference) {
+        return res.status(400).json({
+          success: false,
+          message: "Missing payment reference for paid vendor application",
+        });
+      }
+
+      const PAYSTACK_SECRET =
+        process.env.PAYSTACK_LIVE_SECRET_KEY ||
+        process.env.PAYSTACK_SECRET_KEY ||
+        process.env.PAYSTACK_TEST_SECRET_KEY;
+
+      if (!PAYSTACK_SECRET) {
+        return res
+          .status(500)
+          .json({ success: false, message: "Paystack secret key missing" });
+      }
+
+      const verifyResponse = await axios.get(
+        `https://api.paystack.co/transaction/verify/${encodeURIComponent(normalizedPayload.paymentReference)}`,
+        {
+          headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` },
+        },
+      );
+
+      if (
+        !verifyResponse.data?.status ||
+        verifyResponse.data?.data?.status !== "success"
+      ) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Vendor payment not successful" });
+      }
+
+      const paystackTx = verifyResponse.data.data;
+      if (paystackTx?.metadata?.type !== "vendor_application_fee") {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid payment type for vendor application",
+        });
+      }
+
+      const paystackEmail = String(paystackTx?.customer?.email || "")
+        .trim()
+        .toLowerCase();
+      const formEmail = String(normalizedPayload.email || "")
+        .trim()
+        .toLowerCase();
+      if (paystackEmail && formEmail && paystackEmail !== formEmail) {
+        return res.status(400).json({
+          success: false,
+          message: "Payment email does not match application email",
+        });
+      }
+
+      normalizedPayload.monthlyFeeAmount = Number(paystackTx.amount || 0) / 100;
+      normalizedPayload.lastFeePaidAt =
+        paystackTx.paid_at || normalizedPayload.lastFeePaidAt || null;
+      normalizedPayload.paymentReference = paystackTx.reference;
+      normalizedPayload.appliedCouponCode =
+        paystackTx?.metadata?.coupon?.code || null;
+      normalizedPayload.appliedDiscountPercent = Number(
+        paystackTx?.metadata?.coupon?.percent || 0,
+      );
+    }
+
     // Prepare payment history entry if payment info is present
     const paymentHistory = [];
-    if (payload.monthlyFeeStatus === "paid" && payload.lastFeePaidAt) {
+    if (
+      normalizedPayload.monthlyFeeStatus === "paid" &&
+      normalizedPayload.lastFeePaidAt
+    ) {
       paymentHistory.push({
-        date: payload.lastFeePaidAt,
-        amount: payload.monthlyFeeAmount || 120,
+        date: normalizedPayload.lastFeePaidAt,
+        amount: normalizedPayload.monthlyFeeAmount || 120,
         status: "paid",
-        reference: payload.paymentReference || null,
+        reference: normalizedPayload.paymentReference || null,
       });
     }
 
     const vendorRef = await db.collection("vendors").add({
-      ...payload,
+      ...normalizedPayload,
       status: "pending",
       createdAt: admin.firestore.Timestamp.now(),
       updatedAt: admin.firestore.Timestamp.now(),
