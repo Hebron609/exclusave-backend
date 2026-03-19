@@ -30,10 +30,23 @@ export async function sendTransactionEmail(
   }
 
   try {
+    const maskPhoneNumber = (phone) => {
+      const digits = String(phone || "").replace(/\D/g, "");
+      if (!digits) return "N/A";
+      if (digits.length <= 2) return digits;
+      if (digits.length <= 5) {
+        return `${"*".repeat(digits.length - 2)}${digits.slice(-2)}`;
+      }
+      return `${digits.slice(0, 3)}${"*".repeat(digits.length - 5)}${digits.slice(-2)}`;
+    };
+
     const subject = error ? "❌ Data Order Failed" : "✅ Data Order Successful";
     const statusColor = error ? "#dc2626" : "#059669";
-    const statusText = error ? "FAILED" : "PROCESSING";
     const orderInfo = instantDataResponse?.data || {};
+    const rawAmountPaid = Number(
+      transactionData?.amount ?? transactionData?.paystack?.amount ?? 0,
+    );
+    const amountPaid = Number.isFinite(rawAmountPaid) ? rawAmountPaid : 0;
     // Sanitize all dynamic fields
     const safeSubject = validator.escape(subject);
     const safeReference = validator.escape(
@@ -43,7 +56,7 @@ export async function sendTransactionEmail(
       String(transactionData?.order?.network || "N/A"),
     );
     const safePhone = validator.escape(
-      String(transactionData?.order?.phone_number || "N/A"),
+      maskPhoneNumber(transactionData?.order?.phone_number),
     );
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -71,7 +84,7 @@ export async function sendTransactionEmail(
             </tr>
             <tr style="border-bottom: 1px solid #d1d5db;">
               <td style="padding: 10px 0; color: #6b7280; font-weight: 600;">Amount Paid:</td>
-              <td style="padding: 10px 0; color: #111827;">GH₵${(transactionData?.paystack?.amount || 0).toFixed(2)}</td>
+              <td style="padding: 10px 0; color: #111827;">GH₵${amountPaid.toFixed(2)}</td>
             </tr>
             ${
               instantDataResponse?.order_id
@@ -99,16 +112,6 @@ export async function sendTransactionEmail(
               <tr style="border-bottom: 1px solid #d1d5db;">
                 <td style="padding: 10px 0; color: #6b7280; font-weight: 600;">Delivery Time:</td>
                 <td style="padding: 10px 0; color: #111827;">${orderInfo.expected_delivery}</td>
-              </tr>
-            `
-                : ""
-            }
-            ${
-              orderInfo.remaining_balance
-                ? `
-              <tr>
-                <td style="padding: 10px 0; color: #6b7280; font-weight: 600;">Remaining Balance:</td>
-                <td style="padding: 10px 0; color: #059669; font-weight: 600;">${orderInfo.remaining_balance}</td>
               </tr>
             `
                 : ""
