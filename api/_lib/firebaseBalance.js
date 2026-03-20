@@ -3,7 +3,7 @@
  * Handles all Firestore operations for balance management
  */
 
-import { initializeApp, cert } from "firebase-admin/app";
+import { initializeApp, cert, getApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 let db = null;
@@ -24,9 +24,14 @@ function getDb() {
       return null;
     }
 
-    const app = initializeApp({
-      credential: cert(serviceAccount),
-    });
+    let app;
+    try {
+      app = getApp();
+    } catch {
+      app = initializeApp({
+        credential: cert(serviceAccount),
+      });
+    }
 
     db = getFirestore(app);
     console.log("[Firebase] ✅ Connected to Firestore");
@@ -370,7 +375,10 @@ export async function getPackagePricing(network, dataAmount) {
  */
 export async function isServiceActive() {
   const database = getDb();
-  if (!database) return false;
+  if (!database) {
+    // If DB is temporarily unavailable, avoid blocking checkout by default.
+    return true;
+  }
 
   try {
     const doc = await database
