@@ -11,6 +11,75 @@ const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
 const SENDGRID_API_URL = "https://api.sendgrid.com/v3/mail/send";
 
 /**
+ * Send support form message to support inbox
+ */
+export async function sendSupportContactEmail({ name, email, message }) {
+  if (!SENDGRID_API_KEY || !SENDGRID_FROM_EMAIL) {
+    console.warn(
+      "[EmailService] ⚠️  SendGrid not configured, skipping support email",
+    );
+    return false;
+  }
+
+  const safeName = validator.escape(String(name || "Customer"));
+  const safeEmail = validator.escape(String(email || ""));
+  const safeMessage = validator
+    .escape(String(message || ""))
+    .replace(/\n/g, "<br>");
+  const supportInbox = process.env.SUPPORT_INBOX_EMAIL || SENDGRID_FROM_EMAIL;
+
+  const payload = {
+    personalizations: [
+      {
+        to: [{ email: supportInbox }],
+        subject: `New Support Message from ${safeName}`,
+      },
+    ],
+    from: { email: SENDGRID_FROM_EMAIL, name: "ExcluSave Support Form" },
+    reply_to: { email: safeEmail, name: safeName },
+    content: [
+      {
+        type: "text/html",
+        value: `
+          <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; padding: 20px;">
+            <h2 style="margin: 0 0 16px 0; color: #111827;">New Support Message</h2>
+            <p style="margin: 0 0 8px 0;"><strong>Name:</strong> ${safeName}</p>
+            <p style="margin: 0 0 8px 0;"><strong>Email:</strong> ${safeEmail}</p>
+            <p style="margin: 0 0 8px 0;"><strong>Message:</strong></p>
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; color: #374151; line-height: 1.5;">
+              ${safeMessage}
+            </div>
+          </div>
+        `,
+      },
+    ],
+  };
+
+  try {
+    const response = await axios.post(SENDGRID_API_URL, payload, {
+      headers: {
+        Authorization: `Bearer ${SENDGRID_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    console.log(
+      `[EmailService] ✅ Support email sent from ${email} to ${supportInbox} (Status: ${response.status})`,
+    );
+    return true;
+  } catch (error) {
+    console.error("[EmailService] ❌ Failed to send support email:", {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data,
+      from_email: SENDGRID_FROM_EMAIL,
+      to_email: supportInbox,
+    });
+    return false;
+  }
+}
+
+/**
  * Send transaction confirmation email to customer
  */
 export async function sendTransactionEmail(

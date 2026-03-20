@@ -10,8 +10,17 @@ import verifyHandler from "./api/paystack/verify.js";
 import webhookHandler from "./api/paystack/webhook.js";
 import decisionHandler from "./api/vendors/decision.js";
 import credentialsHandler from "./api/vendors/credentials.js";
+import reviewListHandler from "./api/reviews/list.js";
+import reviewSubmitHandler from "./api/reviews/submit.js";
+import reviewSendVerificationHandler from "./api/reviews/send-verification.js";
+import adminReviewsHandler from "./api/admin/reviews.js";
+import adminReviewStatusHandler from "./api/admin/review-status.js";
+import supportContactHandler from "./api/support/contact.js";
 
 const app = express();
+const useSecureCsrfCookie =
+  process.env.CSRF_COOKIE_SECURE === "true" ||
+  (process.env.NODE_ENV === "production" && process.env.VERCEL === "1");
 
 // Security headers (helmet)
 app.use(
@@ -80,6 +89,8 @@ app.use(
   cors({
     origin: [
       "http://localhost:5173",
+      "http://localhost:5174",
+      "http://localhost:5175",
       "http://localhost:5176",
       "https://www.exclusave.shop",
     ],
@@ -104,16 +115,25 @@ app.use(express.json());
 // 3. csurf() enables CSRF protection using cookies
 //
 // This ensures req.cookies and req.body are available for CSRF validation.
-app.use(
-  csurf({
-    cookie: {
-      httpOnly: true,
-      sameSite: "strict",
-      secure: process.env.NODE_ENV === "production",
-    },
-    ignoreMethods: ["GET", "HEAD", "OPTIONS"],
-  }),
-);
+const csrfProtection = csurf({
+  cookie: {
+    httpOnly: true,
+    sameSite: useSecureCsrfCookie ? "strict" : "lax",
+    secure: useSecureCsrfCookie,
+  },
+  ignoreMethods: ["GET", "HEAD", "OPTIONS"],
+});
+
+app.use((req, res, next) => {
+  if (
+    req.path.startsWith("/api/reviews/") ||
+    req.path.startsWith("/api/admin/") ||
+    req.path.startsWith("/api/support/")
+  ) {
+    return next();
+  }
+  return csrfProtection(req, res, next);
+});
 
 // CSRF token endpoint for frontend to fetch token
 app.get("/api/csrf-token", (req, res) => {
@@ -131,6 +151,12 @@ app.get("/api/csrf-token", (req, res) => {
 // CSRF error handler
 app.use((err, req, res, next) => {
   if (err.code !== "EBADCSRFTOKEN") return next(err);
+  console.error("CSRF rejection", {
+    path: req.path,
+    method: req.method,
+    origin: req.headers.origin,
+    referer: req.headers.referer,
+  });
   res.status(403).json({ error: "Invalid CSRF token" });
 });
 
@@ -146,6 +172,18 @@ app.all("/api/vendors/decision", decisionHandler);
 
 // Vendor credentials endpoint
 app.all("/api/vendors/credentials", credentialsHandler);
+
+// Reviews endpoints
+app.all("/api/reviews/list", reviewListHandler);
+app.all("/api/reviews/submit", reviewSubmitHandler);
+app.all("/api/reviews/send-verification", reviewSendVerificationHandler);
+
+// Admin review endpoints
+app.all("/api/admin/reviews", adminReviewsHandler);
+app.all("/api/admin/review-status", adminReviewStatusHandler);
+
+// Support contact endpoint
+app.all("/api/support/contact", supportContactHandler);
 
 // Ping endpoint
 app.all("/api/ping", (req, res) => {

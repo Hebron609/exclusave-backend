@@ -75,6 +75,7 @@ export default async function handler(req, res) {
       metadata && typeof metadata === "object" && !Array.isArray(metadata)
         ? metadata
         : {};
+    const isVendorDashboardFee = Boolean(metadataInput?.vendorUid);
 
     const isVendorApplicationFee =
       metadataInput?.type === "vendor_application_fee";
@@ -128,16 +129,18 @@ export default async function handler(req, res) {
       };
     }
 
+    const requestedChannels =
+      Array.isArray(channels) && channels.length > 0
+        ? channels
+        : ["mobile_money", "ussd"];
+
     const body = {
       email: safeEmail,
       amount: finalAmount,
       currency: "GHS",
       ...(callback_url ? { callback_url: String(callback_url) } : {}),
       ...(metadataToSend ? { metadata: metadataToSend } : {}),
-      channels:
-        Array.isArray(channels) && channels.length > 0
-          ? channels
-          : ["mobile_money", "ussd"],
+      channels: isVendorDashboardFee ? ["mobile_money"] : requestedChannels,
     };
 
     let r;
