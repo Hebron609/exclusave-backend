@@ -1,6 +1,6 @@
 const DEFAULT_ALLOWED =
   process.env.CORS_ORIGIN ||
-  "https://exclusave-backend.vercel.app,https://exclusave-shop.vercel.app,http://localhost:5173,http://localhost:5174";
+  "https://exclusave.shop,https://www.exclusave.shop,https://exclusave-backend.vercel.app,https://exclusave-shop.vercel.app,http://localhost:5173,http://localhost:5174";
 
 const ALLOWED_ORIGINS = DEFAULT_ALLOWED.split(",").map((s) => s.trim());
 const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000);
@@ -28,6 +28,7 @@ export function originCheck(req, res) {
 
   // Always allow these in production
   const alwaysAllowed = [
+    "https://exclusave.shop",
     "https://www.exclusave.shop",
     "https://exclusave-shop.vercel.app",
     "https://exclusave-backend.vercel.app",

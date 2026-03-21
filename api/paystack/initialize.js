@@ -11,7 +11,7 @@ import logger from "../_lib/logger.js";
 
 export default async function handler(req, res) {
   // Set CORS headers using unified logic
-  originCheck(req, res);
+  if (!originCheck(req, res)) return;
 
   // Handle OPTIONS preflight
   if (req.method === "OPTIONS") {
