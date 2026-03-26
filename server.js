@@ -1,6 +1,7 @@
 import "dotenv/config.js";
 
 import express from "express";
+import imageUploadRouter from "./api/image-upload.js";
 import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -107,6 +108,7 @@ app.use(
 
 app.use(cookieParser());
 app.use(express.json());
+app.use("/api/image-upload", imageUploadRouter);
 
 // --- CSRF PROTECTION ---
 // Middleware order is critical:
